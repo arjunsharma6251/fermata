@@ -1,0 +1,13 @@
+import { chromium } from 'playwright';
+const browser = await chromium.launch({ channel: 'chrome' });
+const page = await browser.newPage({ viewport: { width: 2000, height: 1100 } });
+await page.goto('http://localhost:5180/');
+await page.fill('input[aria-label="search for a song"]', 'ivy frank ocean');
+await page.keyboard.press('Enter');
+await page.locator('button:has-text("Ivy")').first().click();
+await page.waitForSelector('[aria-label="play preview"]', { timeout: 240000 });
+await page.waitForTimeout(4000);
+await page.evaluate(() => window.scrollTo({ top: 600 }));
+await page.waitForTimeout(600);
+await page.screenshot({ path: '/tmp/shot_header_scrolled.png' });
+await browser.close();

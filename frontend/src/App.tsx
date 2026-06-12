@@ -38,6 +38,14 @@ export default function App() {
   const [query, setQuery] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [lastTracks, setLastTracks] = useState<Track[]>([]);
+  const [scrolled, setScrolled] = useState(false);
+
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 8);
+    window.addEventListener("scroll", onScroll, { passive: true });
+    onScroll();
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
 
   const onSearch = useCallback(
     async (e?: React.FormEvent) => {
@@ -90,38 +98,34 @@ export default function App() {
   return (
     <MotionConfig reducedMotion="user">
       {compactHeader && (
-        <header
-          className="col"
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            paddingTop: 28,
-            paddingBottom: 8,
-          }}
-        >
-          <button onClick={() => setPhase({ name: "idle" })} aria-label="fermata home">
-            <Wordmark size={21} />
-          </button>
-          {phase.name !== "analyzing" && (
-            <form onSubmit={onSearch} style={{ display: "flex", gap: 10, alignItems: "baseline" }}>
-              <input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="another song…"
-                aria-label="search for a song"
-                style={{
-                  width: 220,
-                  fontSize: 14.5,
-                  paddingBottom: 3,
-                  borderBottom: "1px solid var(--line)",
-                }}
-              />
-              <button type="submit" className="mono">
-                search
-              </button>
-            </form>
-          )}
+        <header className={`topbar${scrolled ? " scrolled" : ""}`}>
+          <div className="col-wide topbar-inner">
+            <button onClick={() => setPhase({ name: "idle" })} aria-label="fermata home">
+              <Wordmark size={27} />
+            </button>
+            {phase.name !== "analyzing" && (
+              <form
+                onSubmit={onSearch}
+                style={{ display: "flex", gap: 10, alignItems: "baseline" }}
+              >
+                <input
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="another song…"
+                  aria-label="search for a song"
+                  style={{
+                    width: 240,
+                    fontSize: 14.5,
+                    paddingBottom: 3,
+                    borderBottom: "1px solid var(--line)",
+                  }}
+                />
+                <button type="submit" className="mono">
+                  search
+                </button>
+              </form>
+            )}
+          </div>
         </header>
       )}
 

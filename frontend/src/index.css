@@ -86,6 +86,28 @@ img {
   padding: 0 28px;
 }
 
+/* persistent top bar: canvas-colored, sticky; earns a whisper of shadow
+   once the page scrolls under it */
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background: var(--canvas);
+  transition: box-shadow 0.25s ease-out;
+}
+
+.topbar.scrolled {
+  box-shadow: 0 1px 0 var(--line), 0 8px 20px rgba(22, 19, 15, 0.06);
+}
+
+.topbar-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 18px;
+  padding-bottom: 14px;
+}
+
 /* the result page fills the window: fluid hero, then an editorial spread.
    stacked < 1000px · read|rail < 1500px · read|moments|words beyond */
 .col-wide {
