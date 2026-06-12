@@ -46,6 +46,14 @@ async function pkceChallenge(verifier: string): Promise<string> {
 /** Redirect to Spotify's consent page. */
 export async function beginAuth(): Promise<void> {
   if (!CLIENT_ID) return;
+  // Spotify rejects http://localhost redirect URIs as insecure but allows
+  // the loopback IP. localhost and 127.0.0.1 are different origins (the
+  // PKCE verifier in sessionStorage wouldn't survive the round-trip), so
+  // hop onto 127.0.0.1 first and resume there via ?spotify=connect.
+  if (window.location.hostname === "localhost") {
+    window.location.href = `http://127.0.0.1:${window.location.port}/?spotify=connect`;
+    return;
+  }
   const verifier = randomString(64);
   const state = randomString(16);
   sessionStorage.setItem(VERIFIER_KEY, verifier);

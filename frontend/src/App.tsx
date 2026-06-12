@@ -118,10 +118,17 @@ export default function App() {
     }
   }, []);
 
-  // returning from Spotify's consent page
+  // returning from Spotify's consent page — or resuming the auth hop from
+  // localhost onto 127.0.0.1 (see beginAuth)
   useEffect(() => {
+    const resume = new URLSearchParams(window.location.search).get("spotify") === "connect";
     void handleCallback().then((fresh) => {
-      if (fresh) void openPlaylists();
+      if (fresh) {
+        void openPlaylists();
+      } else if (resume) {
+        window.history.replaceState({}, "", window.location.pathname);
+        void beginAuth();
+      }
     });
   }, [openPlaylists]);
 
