@@ -19,7 +19,7 @@ import os
 import re
 import subprocess
 import sys
-import tempfile
+import time
 from pathlib import Path
 
 import numpy as np
@@ -43,12 +43,22 @@ VALIDATION_SET = [
 
 # ---------------------------------------------------------------- data fetch
 
+def get_with_retry(url: str, params: dict, attempts: int = 3) -> requests.Response:
+    last: Exception | None = None
+    for i in range(attempts):
+        try:
+            return requests.get(url, params=params,
+                                headers={"User-Agent": USER_AGENT}, timeout=20)
+        except requests.RequestException as e:
+            last = e
+            time.sleep(1.5 * (i + 1))
+    raise RuntimeError(f"request failed after {attempts} attempts: {last}")
+
+
 def deezer_search(artist: str, title: str) -> dict:
-    r = requests.get(
+    r = get_with_retry(
         "https://api.deezer.com/search",
-        params={"q": f'artist:"{artist}" track:"{title}"', "limit": 5},
-        headers={"User-Agent": USER_AGENT},
-        timeout=15,
+        {"q": f'artist:"{artist}" track:"{title}"', "limit": 5},
     )
     r.raise_for_status()
     tracks = [t for t in r.json().get("data", []) if t.get("preview")]
@@ -58,21 +68,16 @@ def deezer_search(artist: str, title: str) -> dict:
 
 
 def lrclib_lyrics(artist: str, title: str, duration: int) -> dict | None:
-    headers = {"User-Agent": USER_AGENT}
-    r = requests.get(
+    r = get_with_retry(
         "https://lrclib.net/api/get",
-        params={"artist_name": artist, "track_name": title, "duration": duration},
-        headers=headers,
-        timeout=15,
+        {"artist_name": artist, "track_name": title, "duration": duration},
     )
     if r.status_code == 200:
         return r.json()
     # fallback: search and match duration within +-2s
-    r = requests.get(
+    r = get_with_retry(
         "https://lrclib.net/api/search",
-        params={"artist_name": artist, "track_name": title},
-        headers=headers,
-        timeout=15,
+        {"artist_name": artist, "track_name": title},
     )
     if r.status_code == 200:
         for hit in r.json():
@@ -186,7 +191,7 @@ Rules — these are hard requirements:
 - Always connect a mechanical cause to a felt effect. Not "the song uses dynamics" but "the drums vanish for two bars right before the hook, so when they slam back it feels like being let go and caught."
 - Cover both the music and the lyrics, weighted by what actually carries this song. If it's a lyric-first song, say so and dig into the writing (rhyme, repetition, what's NOT said, where the phrasing breaks). If it's production-first, dig into the sound.
 - Plain language. If you need a technical term, explain it in the same breath in plain words.
-- Quote actual lyric lines when you discuss them.
+- Anchor lyric claims in the actual words, but quote SPARINGLY: short fragments only, never more than one line at a time, never two consecutive lines. Total quoted material across the whole response must stay small. Paraphrase the rest.
 - No filler praise ("masterpiece", "iconic", "timeless"). No hedging mush. Confident, warm, precise.
 
 Return ONLY a JSON object, no prose around it, in this exact shape:
@@ -204,7 +209,8 @@ Return ONLY a JSON object, no prose around it, in this exact shape:
   "lyric_read": "a short paragraph on the lyric craft specifically, or null if instrumental",
   "headline": "one sentence, under 15 words: the single sharpest insight about why this song works"
 }}
-Aim for 3-5 moments. Quality over count — every moment must earn its place."""
+Aim for 3-5 moments. Quality over count — every moment must earn its place.
+The response must be strictly valid JSON: escape every newline inside a string as \\n (no literal line breaks inside strings)."""
 
 
 def build_prompt(artist: str, title: str, features: dict, lyrics: dict | None) -> str:
@@ -256,10 +262,16 @@ def parse_json(text: str) -> dict | None:
     m = re.search(r"\{.*\}", text, re.DOTALL)
     if not m:
         return None
+    blob = m.group(0)
     try:
-        return json.loads(m.group(0))
+        return json.loads(blob)
     except json.JSONDecodeError:
-        return None
+        # common model failure: literal newlines inside JSON strings
+        try:
+            return json.loads(re.sub(r'(?<=[^"{\[,:\s])\n(?=\s*[^"\s])', r"\\n",
+                                     blob.replace("\r", "")))
+        except json.JSONDecodeError:
+            return None
 
 
 # ----------------------------------------------------------------- run/print
