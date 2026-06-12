@@ -10,12 +10,23 @@ import { FALLBACK_ACCENT, extractAccent, setAccent } from "./theme";
 import { Analyzing } from "./components/Analyzing";
 import { ResultView } from "./components/ResultView";
 import { formatTime } from "./lrc";
+import type { SpotifyPlaylist, SpotifyTrack } from "./spotify";
+import {
+  beginAuth,
+  getToken,
+  handleCallback,
+  listPlaylists,
+  listPlaylistTracks,
+  spotifyEnabled,
+} from "./spotify";
 
 type Phase =
   | { name: "idle" }
   | { name: "results"; tracks: Track[] }
   | { name: "analyzing"; track: Track }
-  | { name: "result"; analysis: Analysis; tracks: Track[] };
+  | { name: "result"; analysis: Analysis; tracks: Track[] }
+  | { name: "playlists"; playlists: SpotifyPlaylist[] }
+  | { name: "playlistTracks"; playlist: SpotifyPlaylist; tracks: SpotifyTrack[] };
 
 function Wordmark({ size }: { size: number }) {
   return (
@@ -64,28 +75,97 @@ export default function App() {
     [query]
   );
 
-  const onPick = useCallback(async (track: Track) => {
-    setError(null);
-    setPhase({ name: "analyzing", track });
-    // extract + clamp the song's color while the analysis runs
-    const accentPromise = extractAccent(track.cover);
-    try {
-      const [analysis, accent] = await Promise.all([analyzeTrack(track.id), accentPromise]);
-      setAccent(accent);
-      setPhase((p) =>
-        p.name === "analyzing" ? { name: "result", analysis, tracks: [] } : p
-      );
-    } catch (err) {
-      setAccent(FALLBACK_ACCENT);
-      setError(err instanceof Error ? err.message : "analysis failed");
-      setPhase({ name: "idle" });
-    }
-  }, []);
+  const onPick = useCallback(
+    async (track: Track) => {
+      setError(null);
+      setPhase({ name: "analyzing", track });
+      // extract + clamp the song's color while the analysis runs
+      const accentPromise = extractAccent(track.cover);
+      try {
+        const [analysis, accent] = await Promise.all([analyzeTrack(track.id), accentPromise]);
+        setAccent(accent);
+        setPhase((p) =>
+          p.name === "analyzing" ? { name: "result", analysis, tracks: [] } : p
+        );
+      } catch (err) {
+        setAccent(FALLBACK_ACCENT);
+        setError(err instanceof Error ? err.message : "analysis failed");
+        // land back on the results list so another version is one click away
+        setPhase(
+          lastTracks.length > 0 ? { name: "results", tracks: lastTracks } : { name: "idle" }
+        );
+      }
+    },
+    [lastTracks]
+  );
 
   // reset accent when leaving a song
   useEffect(() => {
     if (phase.name === "idle" || phase.name === "results") setAccent(FALLBACK_ACCENT);
   }, [phase.name]);
+
+  const openPlaylists = useCallback(async () => {
+    setError(null);
+    const token = getToken();
+    if (!token) {
+      await beginAuth(); // redirects away
+      return;
+    }
+    try {
+      setPhase({ name: "playlists", playlists: await listPlaylists(token) });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "couldn't load playlists");
+    }
+  }, []);
+
+  // returning from Spotify's consent page
+  useEffect(() => {
+    void handleCallback().then((fresh) => {
+      if (fresh) void openPlaylists();
+    });
+  }, [openPlaylists]);
+
+  const openPlaylist = useCallback(async (playlist: SpotifyPlaylist) => {
+    setError(null);
+    const token = getToken();
+    if (!token) {
+      await beginAuth();
+      return;
+    }
+    try {
+      setPhase({
+        name: "playlistTracks",
+        playlist,
+        tracks: await listPlaylistTracks(token, playlist.id),
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "couldn't load the playlist");
+    }
+  }, []);
+
+  // a Spotify pick is just an entry point — match it on Deezer, then run
+  // the normal pipeline
+  const pickSpotifyTrack = useCallback(
+    async (st: SpotifyTrack) => {
+      setError(null);
+      const firstArtist = st.artist.split(",")[0].trim();
+      try {
+        const candidates = await searchTracks(`${st.title} ${firstArtist}`);
+        if (candidates.length === 0) {
+          setError(`no previewable match found for "${st.title}" — try the search box`);
+          return;
+        }
+        const best = candidates.reduce((a, b) =>
+          Math.abs(a.duration - st.durationS) <= Math.abs(b.duration - st.durationS) ? a : b
+        );
+        setLastTracks(candidates);
+        await onPick(best);
+      } catch {
+        setError("match failed — is the backend running?");
+      }
+    },
+    [onPick]
+  );
 
   const backToResults = useCallback(() => {
     setPhase(
@@ -114,7 +194,7 @@ export default function App() {
                   placeholder="another song…"
                   aria-label="search for a song"
                   style={{
-                    width: 240,
+                    width: "min(240px, 38vw)",
                     fontSize: 14.5,
                     paddingBottom: 3,
                     borderBottom: "1px solid var(--line)",
@@ -175,6 +255,129 @@ export default function App() {
                 analyze ↵
               </button>
             </form>
+            {spotifyEnabled && (
+              <button
+                className="mono-faint"
+                onClick={() => void openPlaylists()}
+                style={{ marginTop: 10, textDecoration: "underline" }}
+              >
+                or browse your spotify playlists →
+              </button>
+            )}
+          </motion.div>
+        )}
+
+        {phase.name === "playlists" && (
+          <motion.div
+            key="playlists"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.3, ease: "easeOut" }}
+            className="col"
+            style={{ paddingTop: 48, paddingBottom: 80 }}
+          >
+            <p className="mono-faint" style={{ marginBottom: 18 }}>
+              your playlists · spotify
+            </p>
+            {phase.playlists.map((p, i) => (
+              <motion.button
+                key={p.id}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: i * 0.04, duration: 0.3, ease: "easeOut" }}
+                onClick={() => void openPlaylist(p)}
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "44px 1fr auto",
+                  gap: 16,
+                  alignItems: "center",
+                  width: "100%",
+                  textAlign: "left",
+                  padding: "12px 10px",
+                  borderTop: "1px solid var(--line)",
+                  transition: "background-color 0.15s ease-out",
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#f3efe8")}
+                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
+              >
+                {p.cover ? (
+                  <img
+                    src={p.cover}
+                    alt=""
+                    width={44}
+                    height={44}
+                    style={{ borderRadius: 4, border: "1px solid var(--line)" }}
+                  />
+                ) : (
+                  <span />
+                )}
+                <span style={{ fontWeight: 600, fontSize: 15.5 }}>{p.name}</span>
+                <span className="mono-faint">{p.trackCount} songs</span>
+              </motion.button>
+            ))}
+          </motion.div>
+        )}
+
+        {phase.name === "playlistTracks" && (
+          <motion.div
+            key={`pl-${phase.playlist.id}`}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.3, ease: "easeOut" }}
+            className="col"
+            style={{ paddingTop: 48, paddingBottom: 80 }}
+          >
+            <p className="mono-faint" style={{ marginBottom: 18 }}>
+              <button
+                className="mono-faint"
+                onClick={() => void openPlaylists()}
+                style={{ textDecoration: "underline" }}
+              >
+                ← playlists
+              </button>{" "}
+              · {phase.playlist.name}
+            </p>
+            {phase.tracks.map((t, i) => (
+              <motion.button
+                key={`${t.title}-${i}`}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: Math.min(i, 12) * 0.035, duration: 0.3, ease: "easeOut" }}
+                onClick={() => void pickSpotifyTrack(t)}
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "44px 1fr auto",
+                  gap: 16,
+                  alignItems: "center",
+                  width: "100%",
+                  textAlign: "left",
+                  padding: "12px 10px",
+                  borderTop: "1px solid var(--line)",
+                  transition: "background-color 0.15s ease-out",
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#f3efe8")}
+                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
+              >
+                {t.cover ? (
+                  <img
+                    src={t.cover}
+                    alt=""
+                    width={44}
+                    height={44}
+                    style={{ borderRadius: 4, border: "1px solid var(--line)" }}
+                  />
+                ) : (
+                  <span />
+                )}
+                <span>
+                  <span style={{ fontWeight: 600, fontSize: 15.5 }}>{t.title}</span>
+                  <span style={{ color: "var(--grey)", fontSize: 14.5 }}> — {t.artist}</span>
+                </span>
+                <span className="mono-faint">{formatTime(t.durationS)}</span>
+              </motion.button>
+            ))}
           </motion.div>
         )}
 

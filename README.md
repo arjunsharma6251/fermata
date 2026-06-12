@@ -18,7 +18,11 @@ See `CLAUDE.md` for the full product spec.
   position within the full song is unknowable from the data (measured and
   confirmed), so lyric-based moments link into the full lyric column
   instead. Don't resurrect fake sync.
-- **Phase 3 — optional, not started.** Spotify playlist onboarding.
+- **Phase 3 — built, needs your Spotify app.** "Browse your spotify
+  playlists" appears on the home page once `VITE_SPOTIFY_CLIENT_ID` is set
+  (see `frontend/.env.example`). Auth is client-side PKCE — no secret.
+  Picked tracks are matched to Deezer by title/artist/duration and run
+  through the normal pipeline.
 
 ## Run it
 
@@ -39,6 +43,18 @@ npm run dev      # http://localhost:5180
 
 LLM: set `ANTHROPIC_API_KEY` to use the API directly; without it the backend
 falls back to the local `claude` CLI (dev only). Model override: `FERMATA_MODEL`.
+
+## Deploy (free tiers)
+
+1. **Backend → Render.** "New → Blueprint" on this repo; `render.yaml` does
+   the rest. Set `ANTHROPIC_API_KEY` (required — the local `claude` CLI
+   fallback doesn't exist on a server) and `ALLOWED_ORIGINS` (your frontend
+   URL) in the dashboard. Note: the free-tier disk is ephemeral, so the
+   analysis cache resets on redeploys.
+2. **Frontend → Vercel.** Import the repo, set the root directory to
+   `frontend/` (Vite is auto-detected). Env vars: `VITE_API_BASE` = the
+   Render URL, and optionally `VITE_SPOTIFY_CLIENT_ID` (add the deployed
+   origin + `/` to the Spotify app's Redirect URIs).
 
 ## Phase 0 harness
 

@@ -4,3 +4,4 @@ __pycache__/
 phase0_results.txt
 node_modules/
 frontend/dist/
+frontend/.env.local

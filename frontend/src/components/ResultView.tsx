@@ -159,7 +159,7 @@ export function ResultView({ analysis, onBack }: ResultViewProps) {
       />
 
       {/* controls */}
-      <div style={{ display: "flex", alignItems: "center", gap: 14, marginTop: 2 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 14, marginTop: 2, flexWrap: "wrap" }}>
         <button
           onClick={player.toggle}
           aria-label={player.playing ? "pause preview" : "play preview"}

@@ -3,6 +3,8 @@
 Run:  uvicorn main:app --reload --port 8000  (from backend/)
 """
 
+import os
+
 from fastapi import FastAPI, HTTPException
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
@@ -12,9 +14,15 @@ import engine
 
 app = FastAPI(title="fermata")
 
+# comma-separated origins; production sets ALLOWED_ORIGINS to the deployed
+# frontend URL
+_origins = os.environ.get(
+    "ALLOWED_ORIGINS", "http://localhost:5180,http://127.0.0.1:5180"
+).split(",")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5180", "http://127.0.0.1:5180"],
+    allow_origins=[o.strip() for o in _origins if o.strip()],
     allow_methods=["GET"],
     allow_headers=["*"],
 )

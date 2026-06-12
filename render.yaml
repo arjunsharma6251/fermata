@@ -1,0 +1,19 @@
+# Render blueprint for the Python backend (librosa needs a real service,
+# not a thin serverless function). mp3 decoding uses soundfile/libsndfile
+# wheels — no system ffmpeg required.
+services:
+  - type: web
+    name: fermata-api
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: cd backend && uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.6
+      - key: ANTHROPIC_API_KEY
+        sync: false # set in the Render dashboard
+      - key: ALLOWED_ORIGINS
+        sync: false # your deployed frontend origin, e.g. https://fermata.vercel.app
+      - key: FERMATA_MODEL
+        value: claude-fable-5

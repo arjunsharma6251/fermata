@@ -1,7 +1,7 @@
 // API contract with the FastAPI backend. These types mirror backend/engine.py
 // and backend/main.py exactly — change them together.
 
-const API_BASE = "http://localhost:8000";
+const API_BASE = import.meta.env.VITE_API_BASE ?? "http://localhost:8000";
 
 export interface Track {
   id: number;
