@@ -1,7 +1,7 @@
-// The full analysis page. Vertical rhythm per spec: title block, data
-// chips, waveform hero, the read, the moment callout, moments, lyrics.
-// Reveal order is choreographed: wave draws in, accent blooms into the
-// peak, then the words rise — eye goes wave -> words.
+// The full analysis page. Wide screens get an editorial spread: title row
+// with chips at the right, the waveform hero across the full column, then
+// the read on the left with the moments + words in a right rail. Narrow
+// screens stack. Reveal order: wave draws in, accent blooms, words rise.
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "motion/react";
@@ -96,65 +96,58 @@ export function ResultView({ analysis, onBack }: ResultViewProps) {
   });
 
   return (
-    <div className="col" style={{ paddingTop: 56, paddingBottom: 120 }}>
-      {/* ------------------------------------------------ title block */}
+    <div className="col-wide" style={{ paddingTop: 40, paddingBottom: 96 }}>
+      {/* --------------------------------- title row: identity | data */}
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.4 }}
-        style={{ display: "flex", alignItems: "center", gap: 20, marginBottom: 26 }}
+        className="title-row"
+        style={{ marginBottom: 30 }}
       >
-        {track.cover && (
-          <img
-            src={track.cover}
-            alt={`${track.album ?? track.title} cover`}
-            width={68}
-            height={68}
-            style={{ borderRadius: 6, border: "1px solid var(--line)" }}
-          />
-        )}
-        <div>
-          <h1
-            style={{
-              fontFamily: "var(--serif)",
-              fontWeight: 600,
-              fontSize: 38,
-              lineHeight: 1.12,
-              letterSpacing: "-0.01em",
-            }}
-          >
-            {track.title}
-          </h1>
-          <p style={{ color: "var(--grey)", fontSize: 15.5, marginTop: 2 }}>{track.artist}</p>
+        <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
+          {track.cover && (
+            <img
+              src={track.cover}
+              alt={`${track.album ?? track.title} cover`}
+              width={68}
+              height={68}
+              style={{ borderRadius: 6, border: "1px solid var(--line)" }}
+            />
+          )}
+          <div>
+            <h1
+              style={{
+                fontFamily: "var(--serif)",
+                fontWeight: 600,
+                fontSize: 38,
+                lineHeight: 1.12,
+                letterSpacing: "-0.01em",
+              }}
+            >
+              {track.title}
+            </h1>
+            <p style={{ color: "var(--grey)", fontSize: 15.5, marginTop: 2 }}>{track.artist}</p>
+          </div>
+        </div>
+
+        <div className="meta-stack">
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <span className="chip">{features.tempo_bpm} bpm</span>
+            <span className="chip">{features.key_estimate.toLowerCase()}</span>
+            <span className="chip">hybrid · clip + arc</span>
+            {analysis.cached && <span className="chip">from cache</span>}
+          </div>
+          <p className="mono-faint">
+            matched: {track.album} · {formatTime(track.duration)} ·{" "}
+            <button className="mono-faint" onClick={onBack} style={{ textDecoration: "underline" }}>
+              wrong version?
+            </button>
+          </p>
         </div>
       </motion.div>
 
-      {/* ------------------------------------------------ data chips */}
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.15, duration: 0.4 }}
-        style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}
-      >
-        <span className="chip">{features.tempo_bpm} bpm</span>
-        <span className="chip">{features.key_estimate.toLowerCase()}</span>
-        <span className="chip">hybrid · clip + arc</span>
-        {analysis.cached && <span className="chip">from cache</span>}
-      </motion.div>
-      <motion.p
-        className="mono-faint"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.25, duration: 0.4 }}
-        style={{ marginBottom: 36 }}
-      >
-        matched: {track.album} · {formatTime(track.duration)} ·{" "}
-        <button className="mono-faint" onClick={onBack} style={{ textDecoration: "underline" }}>
-          wrong version?
-        </button>
-      </motion.p>
-
-      {/* ------------------------------------------------ the hero */}
+      {/* --------------------------------------------- the hero */}
       <Waveform
         bars={waveform}
         duration={features.clip_seconds}
@@ -194,146 +187,145 @@ export function ResultView({ analysis, onBack }: ResultViewProps) {
         </span>
       </div>
 
-      {/* ------------------------------------------------ the read */}
-      <motion.section {...reveal(0)} style={{ marginTop: 64 }}>
-        <p className="mono-faint" style={{ marginBottom: 14 }}>
-          the read
-        </p>
-        <h2
-          style={{
-            fontFamily: "var(--serif)",
-            fontWeight: 560,
-            fontSize: 26,
-            lineHeight: 1.35,
-            marginBottom: 24,
-          }}
-        >
-          {explanation.headline}
-        </h2>
-        {explanation.overall
-          .split("\n")
-          .filter((p) => p.trim())
-          .map((p, i) => (
-            <p key={i} style={{ fontSize: 16.5, lineHeight: 1.75, marginBottom: 16 }}>
-              {p}
-            </p>
-          ))}
-      </motion.section>
-
-      {/* ------------------------------------------------ the moment */}
-      {calloutMoment && (
-        <motion.aside
-          {...reveal(1)}
-          style={{
-            borderLeft: "2px solid var(--accent)",
-            paddingLeft: 20,
-            margin: "40px 0 0",
-          }}
-        >
-          <p className="mono" style={{ marginBottom: 6 }}>
-            the moment · {calloutMoment.timestamp}
+      {/* ----------------------------------- the spread: read | rail */}
+      <div className="result-grid" style={{ marginTop: 52 }}>
+        <motion.div {...reveal(0)}>
+          <p className="mono-faint" style={{ marginBottom: 12 }}>
+            the read
           </p>
-          <p style={{ fontFamily: "var(--serif)", fontSize: 19, lineHeight: 1.5 }}>
-            {calloutMoment.why_it_hits}
-          </p>
-        </motion.aside>
-      )}
-
-      {/* ------------------------------------------------ the moments */}
-      <motion.section {...reveal(2)} style={{ marginTop: 72 }}>
-        <p className="mono-faint" style={{ marginBottom: 22 }}>
-          the moments
-        </p>
-        {explanation.moments.map((m, i) => (
-          <div
-            key={i}
+          <h2
             style={{
-              display: "grid",
-              gridTemplateColumns: "92px 1fr",
-              gap: 18,
-              padding: "20px 0",
-              borderTop: "1px solid var(--line)",
+              fontFamily: "var(--serif)",
+              fontWeight: 560,
+              fontSize: 25,
+              lineHeight: 1.35,
+              marginBottom: 20,
             }}
           >
-            <button
-              className="mono"
-              onClick={() => onStampClick(m)}
-              title={
-                parseClipStamp(m.timestamp) !== null
-                  ? "play this moment"
-                  : "find it in the lyrics"
-              }
-              style={{ textAlign: "left", alignSelf: "start", textDecoration: "underline" }}
-            >
-              {m.timestamp}
-            </button>
-            <div>
-              <p style={{ fontWeight: 600, fontSize: 15.5, marginBottom: 4 }}>
-                {m.moment}{" "}
-                <span className="mono-faint" style={{ fontWeight: 400, marginLeft: 6 }}>
-                  {m.basis}
-                </span>
-              </p>
-              <p style={{ fontSize: 15, lineHeight: 1.65, color: "var(--ink-soft)" }}>
-                {m.what_happens}
-              </p>
-              <p style={{ fontSize: 15, lineHeight: 1.65, marginTop: 6 }}>{m.why_it_hits}</p>
-            </div>
-          </div>
-        ))}
-      </motion.section>
-
-      {/* ------------------------------------------------ the lyrics */}
-      {explanation.lyric_read && (
-        <motion.section {...reveal(3)} style={{ marginTop: 56 }}>
-          <p className="mono-faint" style={{ marginBottom: 14 }}>
-            the lyrics
-          </p>
-          <p style={{ fontSize: 16.5, lineHeight: 1.75 }}>{explanation.lyric_read}</p>
-        </motion.section>
-      )}
-
-      {lyricLines.length > 0 && (
-        <motion.section {...reveal(4)} style={{ marginTop: 56 }}>
-          <div style={{ display: "flex", alignItems: "baseline", gap: 16, marginBottom: 14 }}>
-            <p className="mono-faint">the words · full song</p>
-            <button
-              className="mono"
-              onClick={() => setLyricsOpen((o) => !o)}
-              style={{ textDecoration: "underline" }}
-            >
-              {lyricsOpen ? "collapse" : "show all"}
-            </button>
-          </div>
-          <div
-            style={{
-              maxHeight: lyricsOpen ? "none" : 280,
-              overflow: "hidden",
-              borderBottom: lyricsOpen ? "none" : "1px solid var(--line)",
-            }}
-          >
-            {lyricLines.map((l, i) => (
-              <p
-                key={i}
-                ref={(el) => {
-                  lineRefs.current[i] = el;
-                }}
-                style={{
-                  fontFamily: "var(--serif)",
-                  fontSize: 16,
-                  lineHeight: 2.0,
-                  color: litLine === i ? "var(--ink)" : "var(--ink-soft)",
-                  borderLeft: litLine === i ? "2px solid var(--accent)" : "2px solid transparent",
-                  paddingLeft: 14,
-                  transition: "color 0.4s ease-out, border-color 0.4s ease-out",
-                }}
-              >
-                {l.text}
+            {explanation.headline}
+          </h2>
+          {explanation.overall
+            .split("\n")
+            .filter((p) => p.trim())
+            .map((p, i) => (
+              <p key={i} style={{ fontSize: 16, lineHeight: 1.72, marginBottom: 14 }}>
+                {p}
               </p>
             ))}
-          </div>
-        </motion.section>
-      )}
+
+          {calloutMoment && (
+            <aside
+              style={{
+                borderLeft: "2px solid var(--accent)",
+                paddingLeft: 20,
+                margin: "32px 0 0",
+              }}
+            >
+              <p className="mono" style={{ marginBottom: 6 }}>
+                the moment · {calloutMoment.timestamp}
+              </p>
+              <p style={{ fontFamily: "var(--serif)", fontSize: 18.5, lineHeight: 1.5 }}>
+                {calloutMoment.why_it_hits}
+              </p>
+            </aside>
+          )}
+
+          {explanation.lyric_read && (
+            <div style={{ marginTop: 44 }}>
+              <p className="mono-faint" style={{ marginBottom: 12 }}>
+                the lyrics
+              </p>
+              <p style={{ fontSize: 16, lineHeight: 1.72 }}>{explanation.lyric_read}</p>
+            </div>
+          )}
+        </motion.div>
+
+        <motion.div {...reveal(1)} className="result-side">
+          <p className="mono-faint" style={{ marginBottom: 14 }}>
+            the moments
+          </p>
+          {explanation.moments.map((m, i) => (
+            <div
+              key={i}
+              style={{
+                display: "grid",
+                gridTemplateColumns: "78px 1fr",
+                gap: 14,
+                padding: "14px 0",
+                borderTop: "1px solid var(--line)",
+              }}
+            >
+              <button
+                className="mono"
+                onClick={() => onStampClick(m)}
+                title={
+                  parseClipStamp(m.timestamp) !== null
+                    ? "play this moment"
+                    : "find it in the lyrics"
+                }
+                style={{ textAlign: "left", alignSelf: "start", textDecoration: "underline" }}
+              >
+                {m.timestamp}
+              </button>
+              <div>
+                <p style={{ fontWeight: 600, fontSize: 14.5, marginBottom: 3 }}>
+                  {m.moment}{" "}
+                  <span className="mono-faint" style={{ fontWeight: 400, marginLeft: 6 }}>
+                    {m.basis}
+                  </span>
+                </p>
+                <p style={{ fontSize: 14, lineHeight: 1.6, color: "var(--ink-soft)" }}>
+                  {m.what_happens}
+                </p>
+                <p style={{ fontSize: 14, lineHeight: 1.6, marginTop: 5 }}>{m.why_it_hits}</p>
+              </div>
+            </div>
+          ))}
+
+          {lyricLines.length > 0 && (
+            <div style={{ marginTop: 40 }}>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 16, marginBottom: 12 }}>
+                <p className="mono-faint">the words · full song</p>
+                <button
+                  className="mono"
+                  onClick={() => setLyricsOpen((o) => !o)}
+                  style={{ textDecoration: "underline" }}
+                >
+                  {lyricsOpen ? "collapse" : "show all"}
+                </button>
+              </div>
+              <div
+                style={{
+                  maxHeight: lyricsOpen ? "none" : 250,
+                  overflow: "hidden",
+                  borderBottom: lyricsOpen ? "none" : "1px solid var(--line)",
+                }}
+              >
+                {lyricLines.map((l, i) => (
+                  <p
+                    key={i}
+                    ref={(el) => {
+                      lineRefs.current[i] = el;
+                    }}
+                    style={{
+                      fontFamily: "var(--serif)",
+                      fontSize: 14.5,
+                      lineHeight: 1.85,
+                      color: litLine === i ? "var(--ink)" : "var(--ink-soft)",
+                      borderLeft:
+                        litLine === i ? "2px solid var(--accent)" : "2px solid transparent",
+                      paddingLeft: 14,
+                      transition: "color 0.4s ease-out, border-color 0.4s ease-out",
+                    }}
+                  >
+                    {l.text}
+                  </p>
+                ))}
+              </div>
+            </div>
+          )}
+        </motion.div>
+      </div>
     </div>
   );
 }

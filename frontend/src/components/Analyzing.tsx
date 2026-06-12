@@ -39,7 +39,7 @@ export function Analyzing({ title, artist }: { title: string; artist: string }) 
   );
 
   return (
-    <div className="col" style={{ paddingTop: 96 }}>
+    <div className="col-wide" style={{ paddingTop: 72 }}>
       <p className="mono-faint" style={{ marginBottom: 6 }}>
         analyzing
       </p>

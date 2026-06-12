@@ -86,6 +86,53 @@ img {
   padding: 0 28px;
 }
 
+/* the result page uses the width: wide hero, then a two-column spread */
+.col-wide {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 0 32px;
+}
+
+.title-row {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+
+.meta-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.result-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+}
+
+.result-side {
+  margin-top: 56px;
+}
+
+@media (min-width: 1000px) {
+  .meta-stack {
+    align-items: flex-end;
+  }
+  .result-grid {
+    grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+    gap: 72px;
+    align-items: start;
+  }
+  .result-side {
+    margin-top: 0;
+    border-left: 1px solid var(--line);
+    padding-left: 44px;
+  }
+}
+
 .mono {
   font-family: var(--mono);
   font-size: 11.5px;
