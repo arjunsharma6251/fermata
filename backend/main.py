@@ -40,7 +40,9 @@ async def analyze(track_id: int):
     key = cache.cache_key(track["artist"], track["title"], track["duration"])
     cached = cache.get(key)
     if cached:
-        return {**cached, "cached": True}
+        # preview/cover URLs expire (Deezer signs them) — always serve the
+        # cached analysis with FRESH track metadata
+        return {**cached, "track": track, "cached": True}
 
     try:
         result = await run_in_threadpool(engine.analyze_track, track)

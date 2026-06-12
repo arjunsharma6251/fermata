@@ -238,17 +238,22 @@ def call_llm(prompt: str) -> str:
             messages=[{"role": "user", "content": prompt}],
         )
         return msg.content[0].text
-    # dev fallback: local claude CLI, no API key needed
-    proc = subprocess.run(
-        ["claude", "-p", "--model", "opus"],
-        input=prompt, capture_output=True, text=True, timeout=600,
-    )
-    if proc.returncode != 0:
-        raise RuntimeError(
+    # dev fallback: local claude CLI, no API key needed; one retry — the CLI
+    # occasionally fails transiently and the user has been waiting a minute
+    last_err = ""
+    for _ in range(2):
+        proc = subprocess.run(
+            ["claude", "-p", "--model", "opus"],
+            input=prompt, capture_output=True, text=True, timeout=600,
+        )
+        if proc.returncode == 0:
+            return proc.stdout
+        last_err = (
             f"claude CLI failed (rc {proc.returncode}): "
             f"stderr={proc.stderr[:300]!r} stdout={proc.stdout[:300]!r}"
         )
-    return proc.stdout
+        time.sleep(2)
+    raise RuntimeError(last_err)
 
 
 def parse_explanation(text: str) -> dict | None:

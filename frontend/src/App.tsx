@@ -1,143 +1,261 @@
-// Phase 1: functional and ugly. Proves search -> analyze -> render end to end.
-// All design and motion happens in Phase 2 — do not style this.
+// fermata — Phase 2 shell. States: idle (cover-page hero) -> results ->
+// analyzing (forensic wait) -> result. The accent extracts from the picked
+// track's cover DURING analysis, so the bloom is ready when the wave is.
 
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { AnimatePresence, MotionConfig, motion } from "motion/react";
 import type { Analysis, Track } from "./api";
 import { analyzeTrack, searchTracks } from "./api";
+import { FALLBACK_ACCENT, extractAccent, setAccent } from "./theme";
+import { Analyzing } from "./components/Analyzing";
+import { ResultView } from "./components/ResultView";
+import { formatTime } from "./lrc";
 
-type Status = "idle" | "searching" | "analyzing" | "done" | "error";
+type Phase =
+  | { name: "idle" }
+  | { name: "results"; tracks: Track[] }
+  | { name: "analyzing"; track: Track }
+  | { name: "result"; analysis: Analysis; tracks: Track[] };
 
-export default function App() {
-  const [query, setQuery] = useState("");
-  const [results, setResults] = useState<Track[]>([]);
-  const [analysis, setAnalysis] = useState<Analysis | null>(null);
-  const [status, setStatus] = useState<Status>("idle");
-  const [error, setError] = useState<string | null>(null);
-
-  async function onSearch(e: React.FormEvent) {
-    e.preventDefault();
-    setStatus("searching");
-    setError(null);
-    setAnalysis(null);
-    try {
-      setResults(await searchTracks(query));
-      setStatus("idle");
-    } catch (err) {
-      setError(String(err));
-      setStatus("error");
-    }
-  }
-
-  async function onPick(track: Track) {
-    setStatus("analyzing");
-    setError(null);
-    try {
-      setAnalysis(await analyzeTrack(track.id));
-      setStatus("done");
-    } catch (err) {
-      setError(String(err));
-      setStatus("error");
-    }
-  }
-
+function Wordmark({ size }: { size: number }) {
   return (
-    <main>
-      <h1>fermata (phase 1)</h1>
-
-      <form onSubmit={onSearch}>
-        <input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="song title and artist"
-        />
-        <button type="submit" disabled={status === "searching"}>
-          search
-        </button>
-      </form>
-
-      {error && <p style={{ color: "red" }}>{error}</p>}
-
-      {status === "analyzing" && <p>analyzing… (first run on a song takes a while)</p>}
-
-      {!analysis && results.length > 0 && (
-        <ul>
-          {results.map((t) => (
-            <li key={t.id}>
-              <button onClick={() => onPick(t)} disabled={status === "analyzing"}>
-                analyze
-              </button>{" "}
-              {t.title} — {t.artist} ({t.album}, {Math.floor(t.duration / 60)}:
-              {String(t.duration % 60).padStart(2, "0")})
-            </li>
-          ))}
-        </ul>
-      )}
-
-      {analysis && <Result analysis={analysis} onBack={() => setAnalysis(null)} />}
-    </main>
+    <span
+      style={{
+        fontFamily: "var(--serif)",
+        fontWeight: 620,
+        fontSize: size,
+        letterSpacing: "-0.015em",
+        lineHeight: 1,
+      }}
+    >
+      fermata<span style={{ color: "var(--accent)" }}>.</span>
+    </span>
   );
 }
 
-function Result({ analysis, onBack }: { analysis: Analysis; onBack: () => void }) {
-  const { track, features, waveform, explanation, lyrics } = analysis;
+export default function App() {
+  const [phase, setPhase] = useState<Phase>({ name: "idle" });
+  const [query, setQuery] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [lastTracks, setLastTracks] = useState<Track[]>([]);
+
+  const onSearch = useCallback(
+    async (e?: React.FormEvent) => {
+      e?.preventDefault();
+      if (!query.trim()) return;
+      setError(null);
+      try {
+        const tracks = await searchTracks(query);
+        setLastTracks(tracks);
+        if (tracks.length === 0) setError("nothing found — try adding the artist's name");
+        setPhase({ name: "results", tracks });
+      } catch {
+        setError("search failed — is the backend running on :8000?");
+      }
+    },
+    [query]
+  );
+
+  const onPick = useCallback(async (track: Track) => {
+    setError(null);
+    setPhase({ name: "analyzing", track });
+    // extract + clamp the song's color while the analysis runs
+    const accentPromise = extractAccent(track.cover);
+    try {
+      const [analysis, accent] = await Promise.all([analyzeTrack(track.id), accentPromise]);
+      setAccent(accent);
+      setPhase((p) =>
+        p.name === "analyzing" ? { name: "result", analysis, tracks: [] } : p
+      );
+    } catch (err) {
+      setAccent(FALLBACK_ACCENT);
+      setError(err instanceof Error ? err.message : "analysis failed");
+      setPhase({ name: "idle" });
+    }
+  }, []);
+
+  // reset accent when leaving a song
+  useEffect(() => {
+    if (phase.name === "idle" || phase.name === "results") setAccent(FALLBACK_ACCENT);
+  }, [phase.name]);
+
+  const backToResults = useCallback(() => {
+    setPhase(
+      lastTracks.length > 0 ? { name: "results", tracks: lastTracks } : { name: "idle" }
+    );
+  }, [lastTracks]);
+
+  const compactHeader = phase.name !== "idle";
+
   return (
-    <section>
-      <button onClick={onBack}>← back to results</button>
-      <h2>
-        {track.title} — {track.artist}
-      </h2>
-      {track.cover && <img src={track.cover} alt="" width={96} />}
-      <p>
-        matched: {track.album} · {track.duration}s · isrc {track.isrc}
-        {analysis.cached ? " · (cached)" : ""}
-      </p>
-      <p>
-        {features.tempo_bpm} bpm · {features.key_estimate} (conf{" "}
-        {features.key_confidence}) · hybrid: clip + arc
-      </p>
-
-      {/* raw waveform check — real styling in Phase 2 */}
-      <div style={{ display: "flex", alignItems: "center", height: 60, gap: 1 }}>
-        {waveform.map((v, i) => (
-          <div key={i} style={{ width: 4, height: v * 60, background: "#999" }} />
-        ))}
-      </div>
-
-      <h3>{explanation.headline}</h3>
-      {explanation.overall.split("\n").map(
-        (p, i) => p.trim() && <p key={i}>{p}</p>
+    <MotionConfig reducedMotion="user">
+      {compactHeader && (
+        <header
+          className="col"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            paddingTop: 28,
+            paddingBottom: 8,
+          }}
+        >
+          <button onClick={() => setPhase({ name: "idle" })} aria-label="fermata home">
+            <Wordmark size={21} />
+          </button>
+          {phase.name !== "analyzing" && (
+            <form onSubmit={onSearch} style={{ display: "flex", gap: 10, alignItems: "baseline" }}>
+              <input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="another song…"
+                aria-label="search for a song"
+                style={{
+                  width: 220,
+                  fontSize: 14.5,
+                  paddingBottom: 3,
+                  borderBottom: "1px solid var(--line)",
+                }}
+              />
+              <button type="submit" className="mono">
+                search
+              </button>
+            </form>
+          )}
+        </header>
       )}
 
-      <h3>moments</h3>
-      <ul>
-        {explanation.moments.map((m, i) => (
-          <li key={i}>
-            <strong>
-              [{m.timestamp}] {m.moment}
-            </strong>{" "}
-            <em>({m.basis})</em>
-            <br />
-            what: {m.what_happens}
-            <br />
-            why: {m.why_it_hits}
-          </li>
-        ))}
-      </ul>
-
-      {explanation.lyric_read && (
-        <>
-          <h3>the lyrics</h3>
-          <p>{explanation.lyric_read}</p>
-        </>
+      {error && (
+        <p className="col mono" style={{ paddingTop: 12, color: "var(--ink-soft)" }}>
+          × {error}
+        </p>
       )}
 
-      {track.preview && (
-        <>
-          <h3>preview</h3>
-          <audio controls src={track.preview} />
-          {lyrics.synced && <p>(synced lyrics available — playback sync comes in Phase 2)</p>}
-        </>
-      )}
-    </section>
+      <AnimatePresence mode="wait">
+        {phase.name === "idle" && (
+          <motion.div
+            key="idle"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.35 }}
+            style={{
+              minHeight: "78vh",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 18,
+              padding: "0 28px",
+            }}
+          >
+            <Wordmark size={64} />
+            <p className="mono-faint" style={{ marginBottom: 26 }}>
+              hold the moment · see why it hits
+            </p>
+            <form onSubmit={onSearch} style={{ width: "min(440px, 100%)", display: "flex", gap: 12 }}>
+              <input
+                autoFocus
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="a song you're obsessed with"
+                aria-label="search for a song"
+                style={{
+                  flex: 1,
+                  fontSize: 17,
+                  paddingBottom: 8,
+                  borderBottom: "1px solid var(--ink)",
+                }}
+              />
+              <button type="submit" className="mono" style={{ alignSelf: "flex-end", paddingBottom: 8 }}>
+                analyze ↵
+              </button>
+            </form>
+          </motion.div>
+        )}
+
+        {phase.name === "results" && (
+          <motion.div
+            key="results"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.3, ease: "easeOut" }}
+            className="col"
+            style={{ paddingTop: 48, paddingBottom: 80 }}
+          >
+            <p className="mono-faint" style={{ marginBottom: 18 }}>
+              {phase.tracks.length} matches · pick the version you mean
+            </p>
+            {phase.tracks.map((t, i) => (
+              <motion.button
+                key={t.id}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: i * 0.045, duration: 0.3, ease: "easeOut" }}
+                onClick={() => onPick(t)}
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "44px 1fr auto",
+                  gap: 16,
+                  alignItems: "center",
+                  width: "100%",
+                  textAlign: "left",
+                  padding: "12px 10px",
+                  borderTop: "1px solid var(--line)",
+                  transition: "background-color 0.15s ease-out",
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#f3efe8")}
+                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
+              >
+                {t.cover ? (
+                  <img
+                    src={t.cover.replace("1000x1000", "250x250")}
+                    alt=""
+                    width={44}
+                    height={44}
+                    style={{ borderRadius: 4, border: "1px solid var(--line)" }}
+                  />
+                ) : (
+                  <span />
+                )}
+                <span>
+                  <span style={{ fontWeight: 600, fontSize: 15.5 }}>{t.title}</span>
+                  <span style={{ color: "var(--grey)", fontSize: 14.5 }}>
+                    {" "}
+                    — {t.artist}
+                    {t.album ? ` · ${t.album}` : ""}
+                  </span>
+                </span>
+                <span className="mono-faint">{formatTime(t.duration)}</span>
+              </motion.button>
+            ))}
+          </motion.div>
+        )}
+
+        {phase.name === "analyzing" && (
+          <motion.div
+            key="analyzing"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.35 }}
+          >
+            <Analyzing title={phase.track.title} artist={phase.track.artist} />
+          </motion.div>
+        )}
+
+        {phase.name === "result" && (
+          <motion.div
+            key={`result-${phase.analysis.track.id}`}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.3 }}
+          >
+            <ResultView analysis={phase.analysis} onBack={backToResults} />
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </MotionConfig>
   );
 }
