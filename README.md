@@ -8,10 +8,17 @@ See `CLAUDE.md` for the full product spec.
 - **Phase 0 — done.** Explanation engine validated on 5 songs (`phase0.py`,
   results in `phase0_results.txt` after a run). Prompt lives in
   `backend/engine.py` and is the product — change it deliberately.
-- **Phase 1 — done.** Functional, unstyled pipeline: search → Deezer →
-  LRCLIB → librosa → LLM → result on screen, with a SQLite analysis cache.
-- **Phase 2 — next.** The design language, waveform hero, motion, playback
-  with synced lyrics (spec Part 3).
+- **Phase 1 — done.** Functional pipeline: search → Deezer → LRCLIB →
+  librosa → LLM → result on screen, with a SQLite analysis cache.
+- **Phase 2 — done.** Forensic-editorial design (spec Part 3): waveform
+  hero from real RMS data, per-song accent extracted from album art with a
+  contrast clamp, draw-in/bloom/reveal motion, analyzing state, preview
+  playback with sweeping playhead, scrubbing, and moment annotations.
+  Note: per-line karaoke lyric sync was cut deliberately — the clip's
+  position within the full song is unknowable from the data (measured and
+  confirmed), so lyric-based moments link into the full lyric column
+  instead. Don't resurrect fake sync.
+- **Phase 3 — optional, not started.** Spotify playlist onboarding.
 
 ## Run it
 
