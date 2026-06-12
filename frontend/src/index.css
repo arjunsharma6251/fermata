@@ -86,11 +86,12 @@ img {
   padding: 0 28px;
 }
 
-/* the result page uses the width: wide hero, then a two-column spread */
+/* the result page fills the window: fluid hero, then an editorial spread.
+   stacked < 1000px · read|rail < 1500px · read|moments|words beyond */
 .col-wide {
-  max-width: 1120px;
+  max-width: 1800px;
   margin: 0 auto;
-  padding: 0 32px;
+  padding: 0 clamp(32px, 5vw, 110px);
 }
 
 .title-row {
@@ -113,8 +114,20 @@ img {
   grid-template-columns: 1fr;
 }
 
-.result-side {
+.result-side,
+.result-words {
   margin-top: 56px;
+}
+
+.lyrics-clamp {
+  max-height: 250px;
+  overflow: hidden;
+  border-bottom: 1px solid var(--line);
+}
+
+.lyrics-clamp.open {
+  max-height: none;
+  border-bottom: none;
 }
 
 @media (min-width: 1000px) {
@@ -123,13 +136,39 @@ img {
   }
   .result-grid {
     grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
-    gap: 72px;
+    gap: clamp(56px, 5vw, 96px);
     align-items: start;
   }
-  .result-side {
+  .result-main {
+    grid-row: 1 / span 2;
+  }
+  .result-side,
+  .result-words {
     margin-top: 0;
     border-left: 1px solid var(--line);
-    padding-left: 44px;
+    padding-left: clamp(36px, 3vw, 56px);
+  }
+  .result-words {
+    grid-column: 2;
+    margin-top: 44px;
+  }
+}
+
+@media (min-width: 1500px) {
+  .result-grid {
+    grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr) minmax(0, 0.9fr);
+  }
+  .result-main {
+    grid-row: 1;
+  }
+  .result-words {
+    grid-column: 3;
+    grid-row: 1;
+    margin-top: 0;
+  }
+  /* in its own column the lyric sheet stands taller before clamping */
+  .lyrics-clamp {
+    max-height: min(58vh, 660px);
   }
 }
 

@@ -110,8 +110,8 @@ export function ResultView({ analysis, onBack }: ResultViewProps) {
             <img
               src={track.cover}
               alt={`${track.album ?? track.title} cover`}
-              width={68}
-              height={68}
+              width={76}
+              height={76}
               style={{ borderRadius: 6, border: "1px solid var(--line)" }}
             />
           )}
@@ -120,14 +120,14 @@ export function ResultView({ analysis, onBack }: ResultViewProps) {
               style={{
                 fontFamily: "var(--serif)",
                 fontWeight: 600,
-                fontSize: 38,
-                lineHeight: 1.12,
+                fontSize: "clamp(38px, 2.6vw, 50px)",
+                lineHeight: 1.1,
                 letterSpacing: "-0.01em",
               }}
             >
               {track.title}
             </h1>
-            <p style={{ color: "var(--grey)", fontSize: 15.5, marginTop: 2 }}>{track.artist}</p>
+            <p style={{ color: "var(--grey)", fontSize: 15.5, marginTop: 3 }}>{track.artist}</p>
           </div>
         </div>
 
@@ -189,7 +189,7 @@ export function ResultView({ analysis, onBack }: ResultViewProps) {
 
       {/* ----------------------------------- the spread: read | rail */}
       <div className="result-grid" style={{ marginTop: 52 }}>
-        <motion.div {...reveal(0)}>
+        <motion.div {...reveal(0)} className="result-main">
           <p className="mono-faint" style={{ marginBottom: 12 }}>
             the read
           </p>
@@ -197,7 +197,7 @@ export function ResultView({ analysis, onBack }: ResultViewProps) {
             style={{
               fontFamily: "var(--serif)",
               fontWeight: 560,
-              fontSize: 25,
+              fontSize: "clamp(24px, 1.6vw, 29px)",
               lineHeight: 1.35,
               marginBottom: 20,
             }}
@@ -208,7 +208,14 @@ export function ResultView({ analysis, onBack }: ResultViewProps) {
             .split("\n")
             .filter((p) => p.trim())
             .map((p, i) => (
-              <p key={i} style={{ fontSize: 16, lineHeight: 1.72, marginBottom: 14 }}>
+              <p
+                key={i}
+                style={{
+                  fontSize: "clamp(16px, 0.95vw, 17.5px)",
+                  lineHeight: 1.72,
+                  marginBottom: 14,
+                }}
+              >
                 {p}
               </p>
             ))}
@@ -235,7 +242,9 @@ export function ResultView({ analysis, onBack }: ResultViewProps) {
               <p className="mono-faint" style={{ marginBottom: 12 }}>
                 the lyrics
               </p>
-              <p style={{ fontSize: 16, lineHeight: 1.72 }}>{explanation.lyric_read}</p>
+              <p style={{ fontSize: "clamp(16px, 0.95vw, 17.5px)", lineHeight: 1.72 }}>
+                {explanation.lyric_read}
+              </p>
             </div>
           )}
         </motion.div>
@@ -282,49 +291,44 @@ export function ResultView({ analysis, onBack }: ResultViewProps) {
             </div>
           ))}
 
-          {lyricLines.length > 0 && (
-            <div style={{ marginTop: 40 }}>
-              <div style={{ display: "flex", alignItems: "baseline", gap: 16, marginBottom: 12 }}>
-                <p className="mono-faint">the words · full song</p>
-                <button
-                  className="mono"
-                  onClick={() => setLyricsOpen((o) => !o)}
-                  style={{ textDecoration: "underline" }}
-                >
-                  {lyricsOpen ? "collapse" : "show all"}
-                </button>
-              </div>
-              <div
-                style={{
-                  maxHeight: lyricsOpen ? "none" : 250,
-                  overflow: "hidden",
-                  borderBottom: lyricsOpen ? "none" : "1px solid var(--line)",
-                }}
-              >
-                {lyricLines.map((l, i) => (
-                  <p
-                    key={i}
-                    ref={(el) => {
-                      lineRefs.current[i] = el;
-                    }}
-                    style={{
-                      fontFamily: "var(--serif)",
-                      fontSize: 14.5,
-                      lineHeight: 1.85,
-                      color: litLine === i ? "var(--ink)" : "var(--ink-soft)",
-                      borderLeft:
-                        litLine === i ? "2px solid var(--accent)" : "2px solid transparent",
-                      paddingLeft: 14,
-                      transition: "color 0.4s ease-out, border-color 0.4s ease-out",
-                    }}
-                  >
-                    {l.text}
-                  </p>
-                ))}
-              </div>
-            </div>
-          )}
         </motion.div>
+
+        {lyricLines.length > 0 && (
+          <motion.div {...reveal(2)} className="result-words">
+            <div style={{ display: "flex", alignItems: "baseline", gap: 16, marginBottom: 12 }}>
+              <p className="mono-faint">the words · full song</p>
+              <button
+                className="mono"
+                onClick={() => setLyricsOpen((o) => !o)}
+                style={{ textDecoration: "underline" }}
+              >
+                {lyricsOpen ? "collapse" : "show all"}
+              </button>
+            </div>
+            <div className={`lyrics-clamp${lyricsOpen ? " open" : ""}`}>
+              {lyricLines.map((l, i) => (
+                <p
+                  key={i}
+                  ref={(el) => {
+                    lineRefs.current[i] = el;
+                  }}
+                  style={{
+                    fontFamily: "var(--serif)",
+                    fontSize: 14.5,
+                    lineHeight: 1.85,
+                    color: litLine === i ? "var(--ink)" : "var(--ink-soft)",
+                    borderLeft:
+                      litLine === i ? "2px solid var(--accent)" : "2px solid transparent",
+                    paddingLeft: 14,
+                    transition: "color 0.4s ease-out, border-color 0.4s ease-out",
+                  }}
+                >
+                  {l.text}
+                </p>
+              ))}
+            </div>
+          </motion.div>
+        )}
       </div>
     </div>
   );

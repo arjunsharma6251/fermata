@@ -23,7 +23,7 @@ interface WaveformProps {
   bloom: boolean;
 }
 
-const HEIGHT = 132;
+const HEIGHT = "clamp(132px, 17vh, 200px)";
 const PEAK_SPREAD = 3; // bars on each side of the marker that take the accent
 
 /** Real RMS data is jagged; lift quiet bars and soften loud ones so the

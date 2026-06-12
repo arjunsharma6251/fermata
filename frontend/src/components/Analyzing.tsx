@@ -58,7 +58,7 @@ export function Analyzing({ title, artist }: { title: string; artist: string }) 
       <div
         style={{
           position: "relative",
-          height: 132,
+          height: "clamp(132px, 17vh, 200px)",
           display: "flex",
           alignItems: "center",
           gap: 2,
