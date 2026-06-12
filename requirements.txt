@@ -3,3 +3,5 @@ numpy
 requests
 anthropic
 soundfile
+fastapi
+uvicorn
