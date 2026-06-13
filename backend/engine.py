@@ -11,6 +11,7 @@ import json
 import os
 import re
 import subprocess
+import threading
 import time
 from pathlib import Path
 
@@ -23,6 +24,11 @@ AUDIO_CACHE = CACHE_DIR / "audio"
 USER_AGENT = "Fermata/0.1 (github.com/arjunsharma6251)"
 MODEL = os.environ.get("FERMATA_MODEL", "claude-opus-4-8")
 WAVEFORM_BARS = 96
+
+# librosa's memory spike is the tightest constraint on the 512 MB free host;
+# serialize feature extraction so two concurrent analyses can't both spike
+# and OOM the worker. The LLM call (the slow part) runs outside this lock.
+_FEATURE_LOCK = threading.Lock()
 
 
 # ---------------------------------------------------------------- data fetch
@@ -112,16 +118,23 @@ def _estimate_key(chroma_mean: np.ndarray) -> tuple[str, float]:
 
 
 def extract_features(mp3_path: Path) -> dict:
-    y, sr = librosa.load(mp3_path, sr=22050, mono=True)
+    # 16 kHz is plenty for tempo/key/energy/brightness and roughly halves the
+    # audio array vs 22.05 kHz — the free-tier (512 MB) host OOMs otherwise.
+    y, sr = librosa.load(mp3_path, sr=16000, mono=True)
     clip_dur = len(y) / sr
+    hop = 512
 
-    tempo, beats = librosa.beat.beat_track(y=y, sr=sr)
+    # one magnitude spectrogram, reused for chroma + brightness, so we don't
+    # pay for three separate transforms (the old chroma_cqt was the worst
+    # offender — Constant-Q is very memory/CPU heavy)
+    spec = np.abs(librosa.stft(y, n_fft=2048, hop_length=hop))
+
+    tempo, beats = librosa.beat.beat_track(y=y, sr=sr, hop_length=hop)
     tempo = float(np.atleast_1d(tempo)[0])
 
-    chroma = librosa.feature.chroma_cqt(y=y, sr=sr)
+    chroma = librosa.feature.chroma_stft(S=spec**2, sr=sr)
     key, key_conf = _estimate_key(chroma.mean(axis=1))
 
-    hop = 512
     rms = librosa.feature.rms(y=y, hop_length=hop)[0]
     times = librosa.frames_to_time(np.arange(len(rms)), sr=sr, hop_length=hop)
     win = max(1, len(rms) // 60)
@@ -154,8 +167,8 @@ def extract_features(mp3_path: Path) -> dict:
         if len(shifts) >= 3:
             break
 
-    centroid = librosa.feature.spectral_centroid(y=y, sr=sr)[0]
-    onsets = librosa.onset.onset_detect(y=y, sr=sr, units="time")
+    centroid = librosa.feature.spectral_centroid(S=spec, sr=sr)[0]
+    onsets = librosa.onset.onset_detect(y=y, sr=sr, hop_length=hop, units="time")
     third = len(centroid) // 3
 
     return {
@@ -280,7 +293,8 @@ def analyze_track(track: dict) -> dict:
         f"{track['artist']}|{track['title']}|{track['duration']}".lower().encode()
     ).hexdigest()[:20]
     mp3 = download_preview(track["preview"], audio_key)
-    features = extract_features(mp3)
+    with _FEATURE_LOCK:
+        features = extract_features(mp3)
 
     raw = call_llm(build_prompt(track["artist"], track["title"], features, lyrics))
     explanation = parse_explanation(raw)
