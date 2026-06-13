@@ -30,7 +30,7 @@ CACHE_DIR = Path(__file__).parent / "cache"
 AUDIO_CACHE = CACHE_DIR / "audio"
 LLM_CACHE = CACHE_DIR / "llm"
 USER_AGENT = "Fermata/0.1-phase0 (validation script)"
-MODEL = os.environ.get("FERMATA_MODEL", "claude-fable-5")
+MODEL = os.environ.get("FERMATA_MODEL", "claude-opus-4-8")
 
 VALIDATION_SET = [
     ("Johnny Cash", "Hurt"),                # lyric-driven

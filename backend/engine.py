@@ -21,7 +21,7 @@ import librosa
 CACHE_DIR = Path(__file__).resolve().parent.parent / "cache"
 AUDIO_CACHE = CACHE_DIR / "audio"
 USER_AGENT = "Fermata/0.1 (github.com/arjunsharma6251)"
-MODEL = os.environ.get("FERMATA_MODEL", "claude-fable-5")
+MODEL = os.environ.get("FERMATA_MODEL", "claude-opus-4-8")
 WAVEFORM_BARS = 96
 
 

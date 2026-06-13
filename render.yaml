@@ -16,4 +16,4 @@ services:
       - key: ALLOWED_ORIGINS
         sync: false # your deployed frontend origin, e.g. https://fermata.vercel.app
       - key: FERMATA_MODEL
-        value: claude-fable-5
+        value: claude-opus-4-8
