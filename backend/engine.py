@@ -19,7 +19,9 @@ import numpy as np
 import requests
 import librosa
 
-CACHE_DIR = Path(__file__).resolve().parent.parent / "cache"
+CACHE_DIR = Path(
+    os.environ.get("FERMATA_CACHE_DIR", Path(__file__).resolve().parent.parent / "cache")
+)
 AUDIO_CACHE = CACHE_DIR / "audio"
 USER_AGENT = "Fermata/0.1 (github.com/arjunsharma6251)"
 MODEL = os.environ.get("FERMATA_MODEL", "claude-opus-4-8")

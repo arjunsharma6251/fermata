@@ -5,12 +5,16 @@ for v1, so the cache sits in front of the entire analyze pipeline.
 """
 
 import json
+import os
 import re
 import sqlite3
 import time
 from pathlib import Path
 
-DB_PATH = Path(__file__).resolve().parent.parent / "cache" / "fermata.db"
+_CACHE_DIR = Path(
+    os.environ.get("FERMATA_CACHE_DIR", Path(__file__).resolve().parent.parent / "cache")
+)
+DB_PATH = _CACHE_DIR / "fermata.db"
 
 
 def _connect() -> sqlite3.Connection:
