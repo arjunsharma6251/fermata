@@ -4,7 +4,7 @@
 const API_BASE = import.meta.env.VITE_API_BASE ?? "http://localhost:8000";
 
 export interface Track {
-  id: number;
+  id: string; // namespaced by source, e.g. "deezer:123" / "itunes:456"
   title: string;
   artist: string;
   album: string | null;
@@ -60,8 +60,8 @@ export async function searchTracks(query: string): Promise<Track[]> {
   return body.results;
 }
 
-export async function analyzeTrack(trackId: number): Promise<Analysis> {
-  const res = await fetch(`${API_BASE}/api/analyze/${trackId}`);
+export async function analyzeTrack(trackId: string): Promise<Analysis> {
+  const res = await fetch(`${API_BASE}/api/analyze/${encodeURIComponent(trackId)}`);
   if (!res.ok) {
     const detail = await res.json().catch(() => null);
     throw new Error(detail?.detail ?? `analyze failed: ${res.status}`);

@@ -52,7 +52,8 @@ async def search(q: str):
 
 
 @app.get("/api/analyze/{track_id}")
-async def analyze(track_id: int):
+async def analyze(track_id: str):
+    # track_id is namespaced, e.g. "deezer:123" / "itunes:456"
     try:
         track = await run_in_threadpool(engine.get_track, track_id)
     except Exception as e:

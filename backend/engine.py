@@ -47,9 +47,15 @@ def _get(url: str, params: dict | None = None, attempts: int = 3) -> requests.Re
     raise RuntimeError(f"request failed after {attempts} attempts: {last}")
 
 
-def _track_summary(t: dict) -> dict:
+# Track ids are namespaced by source ("deezer:NNN" / "itunes:NNN") so the
+# analyze step looks each one up from the source that produced it. Deezer is
+# preferred (richer metadata + ISRC) but blocks many datacenter IPs (e.g.
+# Hugging Face), so iTunes is the fallback — the spec's designated backup,
+# also free + no-auth, and reachable where Deezer isn't.
+
+def _deezer_summary(t: dict) -> dict:
     return {
-        "id": t["id"],
+        "id": f"deezer:{t['id']}",
         "title": t["title"],
         "artist": t["artist"]["name"],
         "album": t.get("album", {}).get("title"),
@@ -60,21 +66,67 @@ def _track_summary(t: dict) -> dict:
     }
 
 
-def search_tracks(query: str, limit: int = 8) -> list[dict]:
+def _itunes_summary(r: dict) -> dict:
+    # bump the 100px thumbnail to a real cover for the accent extraction
+    art = r.get("artworkUrl100") or r.get("artworkUrl60") or ""
+    cover = re.sub(r"/\d+x\d+bb", "/1000x1000bb", art) if art else None
+    return {
+        "id": f"itunes:{r['trackId']}",
+        "title": r.get("trackName"),
+        "artist": r.get("artistName"),
+        "album": r.get("collectionName"),
+        "cover": cover,
+        "duration": round(r.get("trackTimeMillis", 0) / 1000),
+        "preview": r.get("previewUrl"),
+        "isrc": None,  # iTunes search doesn't expose ISRC
+    }
+
+
+def _deezer_search(query: str, limit: int) -> list[dict]:
     r = _get("https://api.deezer.com/search", {"q": query, "limit": limit})
     r.raise_for_status()
-    return [_track_summary(t) for t in r.json().get("data", []) if t.get("preview")]
+    data = r.json()
+    if isinstance(data, dict) and data.get("error"):
+        raise RuntimeError(f"Deezer error: {data['error']}")
+    return [_deezer_summary(t) for t in data.get("data", []) if t.get("preview")]
 
 
-def get_track(track_id: int) -> dict:
-    r = _get(f"https://api.deezer.com/track/{track_id}")
+def _itunes_search(query: str, limit: int) -> list[dict]:
+    r = _get("https://itunes.apple.com/search",
+             {"term": query, "entity": "song", "limit": limit})
+    r.raise_for_status()
+    return [_itunes_summary(t) for t in r.json().get("results", []) if t.get("previewUrl")]
+
+
+def search_tracks(query: str, limit: int = 8) -> list[dict]:
+    try:
+        tracks = _deezer_search(query, limit)
+        if tracks:
+            return tracks
+    except Exception:
+        pass  # Deezer blocked/empty — fall back to iTunes
+    return _itunes_search(query, limit)
+
+
+def get_track(track_id: str) -> dict:
+    source, _, raw = str(track_id).partition(":")
+    if source == "itunes":
+        r = _get("https://itunes.apple.com/lookup", {"id": raw})
+        r.raise_for_status()
+        results = r.json().get("results", [])
+        if not results or not results[0].get("previewUrl"):
+            raise RuntimeError("No preview available for this track")
+        return _itunes_summary(results[0])
+    # default to Deezer (covers "deezer:NNN" and bare legacy numeric ids)
+    did = raw if source == "deezer" else source
+    r = _get(f"https://api.deezer.com/track/{did}")
     r.raise_for_status()
     t = r.json()
     if t.get("error"):
-        raise RuntimeError(f"Deezer track {track_id}: {t['error'].get('message')}")
+        raise RuntimeError(f"Deezer track {did}: {t['error'].get('message')}")
     if not t.get("preview"):
         raise RuntimeError("No preview available for this track")
-    return _track_summary(t)
+    return _deezer_summary(t)
 
 
 def fetch_lyrics(artist: str, title: str, duration: int) -> dict | None:
@@ -93,7 +145,10 @@ def fetch_lyrics(artist: str, title: str, duration: int) -> dict | None:
 
 def download_preview(url: str, key: str) -> Path:
     AUDIO_CACHE.mkdir(parents=True, exist_ok=True)
-    path = AUDIO_CACHE / f"{key}.mp3"
+    # Deezer serves mp3, iTunes serves m4a/aac — keep the real extension so
+    # audioread/ffmpeg picks the right decoder
+    ext = ".m4a" if ".m4a" in url.lower() else ".mp3"
+    path = AUDIO_CACHE / f"{key}{ext}"
     if not path.exists():
         r = requests.get(url, headers={"User-Agent": USER_AGENT}, timeout=30)
         r.raise_for_status()
