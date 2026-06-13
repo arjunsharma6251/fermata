@@ -129,7 +129,10 @@ async function spotifyGet(token: string, path: string): Promise<unknown> {
     sessionStorage.removeItem(TOKEN_KEY);
     throw new Error("spotify session expired — connect again");
   }
-  if (!res.ok) throw new Error(`spotify request failed: ${res.status}`);
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`spotify ${res.status}: ${body.slice(0, 200) || "(no detail)"}`);
+  }
   return res.json();
 }
 
@@ -139,7 +142,9 @@ export async function listPlaylists(token: string): Promise<SpotifyPlaylist[]> {
       id: string;
       name: string;
       images: { url: string }[] | null;
-      tracks: { total: number } | null; // null for some playlists
+      // pre-March-2026 API calls this "tracks"; the migration renamed it
+      tracks: { total: number } | null;
+      items: { total: number } | null;
       owner: { id: string } | null;
     } | null)[];
   };
@@ -149,7 +154,7 @@ export async function listPlaylists(token: string): Promise<SpotifyPlaylist[]> {
       id: p.id,
       name: p.name,
       cover: p.images?.[0]?.url ?? null,
-      trackCount: p.tracks?.total ?? 0,
+      trackCount: p.tracks?.total ?? p.items?.total ?? 0,
       spotifyOwned: p.owner?.id === "spotify",
     }));
 }
@@ -158,37 +163,36 @@ export async function listPlaylistTracks(
   token: string,
   playlistId: string
 ): Promise<SpotifyTrack[]> {
-  const fields = "items(track(name,duration_ms,artists(name),album(images)))";
+  // March 2026 API migration: /playlists/{id}/tracks is gone for dev-mode
+  // apps (403); the replacement is /playlists/{id}/items with the inner
+  // "track" field renamed to "item". Fall back to the old endpoint for
+  // apps still on the legacy API, and parse both shapes.
   let body: unknown;
   try {
-    body = await spotifyGet(
-      token,
-      `/playlists/${playlistId}/tracks?limit=100&fields=${encodeURIComponent(fields)}`
-    );
+    body = await spotifyGet(token, `/playlists/${playlistId}/items?limit=100`);
   } catch (err) {
-    if (err instanceof Error && /403|404/.test(err.message)) {
-      throw new Error(
-        "spotify doesn't let apps read its own curated playlists — pick one of yours"
-      );
+    if (err instanceof Error && /spotify (403|404)/.test(err.message)) {
+      body = await spotifyGet(token, `/playlists/${playlistId}/tracks?limit=100`);
+    } else {
+      throw err;
     }
-    throw err;
+  }
+  interface ItemShape {
+    name: string;
+    duration_ms: number;
+    artists: { name: string }[];
+    album: { images: { url: string }[] | null } | null;
   }
   const typed = body as {
-    items: {
-      track: {
-        name: string;
-        duration_ms: number;
-        artists: { name: string }[];
-        album: { images: { url: string }[] | null };
-      } | null;
-    }[];
+    items: ({ item?: ItemShape | null; track?: ItemShape | null } | null)[];
   };
   return typed.items
-    .filter((i) => i.track)
-    .map((i) => ({
-      title: i.track!.name,
-      artist: i.track!.artists.map((a) => a.name).join(", "),
-      durationS: Math.round(i.track!.duration_ms / 1000),
-      cover: i.track!.album.images?.[0]?.url ?? null,
+    .map((i) => i?.item ?? i?.track ?? null)
+    .filter((t): t is ItemShape => t !== null)
+    .map((t) => ({
+      title: t.name,
+      artist: t.artists.map((a) => a.name).join(", "),
+      durationS: Math.round(t.duration_ms / 1000),
+      cover: t.album?.images?.[0]?.url ?? null,
     }));
 }
