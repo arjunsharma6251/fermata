@@ -1,9 +1,8 @@
-# Keep the Render free-tier backend awake so visitors don't hit a 30-60s
-# cold start. Pings the cheap /api/health endpoint every ~10 min (Render
-# spins down after 15 min idle). Free: runs on GitHub Actions minutes.
+# Keep the Hugging Face Space backend awake. HF free Spaces sleep after ~48h
+# idle; pinging /api/health every ~10 min keeps it active so visitors don't
+# hit a cold start. Free: runs on GitHub Actions minutes.
 #
-# Caveat: scheduled workflows can be delayed by GitHub during peak load, so
-# this keeps the backend warm MOST of the time, not guaranteed always.
+# Caveat: scheduled workflows can be delayed by GitHub during peak load.
 # GitHub also disables schedules after 60 days of repo inactivity.
 name: keep-warm
 
@@ -19,6 +18,6 @@ jobs:
       - name: ping backend health
         run: |
           code=$(curl -sS -m 90 -o /dev/null -w "%{http_code}" \
-            https://fermata-api.onrender.com/api/health)
+            https://arjunsh6251-fermata.hf.space/api/health)
           echo "health -> $code"
           [ "$code" = "200" ]
