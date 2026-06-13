@@ -1,0 +1,55 @@
+# Sync the repo to a Hugging Face Space (Docker SDK) on every push to main.
+# HF Spaces free tier gives 16 GB RAM / 2 vCPU — enough for librosa, which
+# Render's 512 MB free tier OOM-killed.
+#
+# One-time setup (GitHub repo → Settings → Secrets and variables → Actions):
+#   HF_TOKEN  — a Hugging Face write token (hf.co → Settings → Access Tokens)
+#   HF_SPACE  — the Space id, e.g. "arjunsharma/fermata"
+# The Space must already exist (create it on hf.co as a Docker Space).
+#
+# The runtime secrets (ANTHROPIC_API_KEY, ALLOWED_ORIGINS, FERMATA_MODEL)
+# are set in the HF Space's own Settings → Variables and secrets, NOT here.
+name: sync-to-hf
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: push to Hugging Face Space
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_SPACE: ${{ secrets.HF_SPACE }}
+        run: |
+          # HF Spaces require a README.md with this frontmatter to configure
+          # the Docker runtime. We overwrite the repo README only in the copy
+          # pushed to HF — GitHub keeps its own README.
+          cat > README.md <<'EOF'
+          ---
+          title: Fermata API
+          emoji: "🎵"
+          colorFrom: red
+          colorTo: gray
+          sdk: docker
+          app_port: 7860
+          pinned: false
+          ---
+
+          Fermata backend — FastAPI + librosa. Source of truth:
+          https://github.com/arjunsharma6251/fermata
+          EOF
+          git config user.email "actions@github.com"
+          git config user.name "github-actions"
+          git add README.md
+          git commit -m "hf: docker space frontmatter" || true
+          git push --force \
+            "https://user:${HF_TOKEN}@huggingface.co/spaces/${HF_SPACE}.git" \
+            HEAD:main

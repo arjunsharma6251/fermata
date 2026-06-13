@@ -1,0 +1,12 @@
+# keep the Docker build context small — none of this belongs in the image
+.venv/
+cache/
+__pycache__/
+**/__pycache__/
+node_modules/
+frontend/
+phase0_results.txt
+.git/
+.github/
+*.md
+!README.md
