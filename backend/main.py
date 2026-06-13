@@ -28,6 +28,12 @@ app.add_middleware(
 )
 
 
+@app.get("/")
+async def root():
+    # friendly landing + a 200 for any platform that health-probes the root
+    return {"service": "fermata", "ok": True, "docs": "/docs"}
+
+
 @app.get("/api/health")
 async def health():
     # cheap liveness ping — no external calls; used by the keep-warm cron to
