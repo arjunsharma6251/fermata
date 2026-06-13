@@ -69,7 +69,7 @@ export default function App() {
         if (tracks.length === 0) setError("nothing found — try adding the artist's name");
         setPhase({ name: "results", tracks });
       } catch {
-        setError("search failed — is the backend running on :8000?");
+        setError("search failed — couldn't reach the backend");
       }
     },
     [query]
