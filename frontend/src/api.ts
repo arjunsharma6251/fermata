@@ -4,6 +4,8 @@
 // VITE_API_BASE overrides if set; otherwise production builds use the HF
 // Space backend and local dev uses the local FastAPI server. Hardcoded so a
 // missing/misconfigured Vercel env var can't break the live site.
+import { deezerSearch } from "./deezer";
+
 const API_BASE =
   import.meta.env.VITE_API_BASE ??
   (import.meta.env.PROD
@@ -61,14 +63,28 @@ export interface Analysis {
 }
 
 export async function searchTracks(query: string): Promise<Track[]> {
+  // Deezer (browser JSONP) is primary — better catalog + search. The backend
+  // (iTunes) is the fallback for when Deezer JSONP fails.
+  try {
+    const tracks = await deezerSearch(query);
+    if (tracks.length > 0) return tracks;
+  } catch {
+    /* fall through to the backend */
+  }
   const res = await fetch(`${API_BASE}/api/search?q=${encodeURIComponent(query)}`);
   if (!res.ok) throw new Error(`search failed: ${res.status}`);
   const body = (await res.json()) as { results: Track[] };
   return body.results;
 }
 
-export async function analyzeTrack(trackId: string): Promise<Analysis> {
-  const res = await fetch(`${API_BASE}/api/analyze/${encodeURIComponent(trackId)}`);
+export async function analyzeTrack(track: Track): Promise<Analysis> {
+  // POST the full track (incl. its preview URL) so the backend never needs
+  // to reach Deezer's API itself — it just downloads the preview + analyzes.
+  const res = await fetch(`${API_BASE}/api/analyze`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(track),
+  });
   if (!res.ok) {
     const detail = await res.json().catch(() => null);
     throw new Error(detail?.detail ?? `analyze failed: ${res.status}`);

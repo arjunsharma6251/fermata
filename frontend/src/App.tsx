@@ -82,7 +82,7 @@ export default function App() {
       // extract + clamp the song's color while the analysis runs
       const accentPromise = extractAccent(track.cover);
       try {
-        const [analysis, accent] = await Promise.all([analyzeTrack(track.id), accentPromise]);
+        const [analysis, accent] = await Promise.all([analyzeTrack(track), accentPromise]);
         setAccent(accent);
         setPhase((p) =>
           p.name === "analyzing" ? { name: "result", analysis, tracks: [] } : p

@@ -14,6 +14,7 @@ import subprocess
 import threading
 import time
 from pathlib import Path
+from urllib.parse import urlparse
 
 import numpy as np
 import requests
@@ -141,6 +142,21 @@ def fetch_lyrics(artist: str, title: str, duration: int) -> dict | None:
             if abs(hit.get("duration", 0) - duration) <= 2:
                 return hit
     return None
+
+
+# the client supplies the preview URL, so only fetch from known preview CDNs
+# (prevents the server being used to fetch arbitrary URLs)
+_ALLOWED_PREVIEW_HOSTS = ("dzcdn.net", "deezer.com", "mzstatic.com", "apple.com")
+
+
+def is_allowed_preview(url: str) -> bool:
+    try:
+        host = urlparse(url).hostname or ""
+    except ValueError:
+        return False
+    return url.startswith("https://") and any(
+        host == h or host.endswith("." + h) for h in _ALLOWED_PREVIEW_HOSTS
+    )
 
 
 def download_preview(url: str, key: str) -> Path:
