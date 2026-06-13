@@ -294,6 +294,12 @@ export default function App() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: i * 0.04, duration: 0.3, ease: "easeOut" }}
                 onClick={() => void openPlaylist(p)}
+                disabled={p.spotifyOwned}
+                title={
+                  p.spotifyOwned
+                    ? "spotify doesn't let apps read its own curated playlists"
+                    : undefined
+                }
                 style={{
                   display: "grid",
                   gridTemplateColumns: "44px 1fr auto",
@@ -304,8 +310,12 @@ export default function App() {
                   padding: "12px 10px",
                   borderTop: "1px solid var(--line)",
                   transition: "background-color 0.15s ease-out",
+                  opacity: p.spotifyOwned ? 0.45 : 1,
+                  cursor: p.spotifyOwned ? "not-allowed" : "pointer",
                 }}
-                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#f3efe8")}
+                onMouseEnter={(e) => {
+                  if (!p.spotifyOwned) e.currentTarget.style.backgroundColor = "#f3efe8";
+                }}
                 onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
               >
                 {p.cover ? (
@@ -320,7 +330,9 @@ export default function App() {
                   <span />
                 )}
                 <span style={{ fontWeight: 600, fontSize: 15.5 }}>{p.name}</span>
-                <span className="mono-faint">{p.trackCount} songs</span>
+                <span className="mono-faint">
+                  {p.spotifyOwned ? "unavailable · spotify-curated" : `${p.trackCount} songs`}
+                </span>
               </motion.button>
             ))}
           </motion.div>

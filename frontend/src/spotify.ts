@@ -16,6 +16,8 @@ export interface SpotifyPlaylist {
   name: string;
   cover: string | null;
   trackCount: number;
+  /** Spotify blocks dev-mode apps from reading its own curated playlists. */
+  spotifyOwned: boolean;
 }
 
 export interface SpotifyTrack {
@@ -133,19 +135,23 @@ async function spotifyGet(token: string, path: string): Promise<unknown> {
 
 export async function listPlaylists(token: string): Promise<SpotifyPlaylist[]> {
   const body = (await spotifyGet(token, "/me/playlists?limit=50")) as {
-    items: {
+    items: ({
       id: string;
       name: string;
       images: { url: string }[] | null;
-      tracks: { total: number };
-    }[];
+      tracks: { total: number } | null; // null for some playlists
+      owner: { id: string } | null;
+    } | null)[];
   };
-  return body.items.map((p) => ({
-    id: p.id,
-    name: p.name,
-    cover: p.images?.[0]?.url ?? null,
-    trackCount: p.tracks.total,
-  }));
+  return body.items
+    .filter((p): p is NonNullable<typeof p> => p !== null)
+    .map((p) => ({
+      id: p.id,
+      name: p.name,
+      cover: p.images?.[0]?.url ?? null,
+      trackCount: p.tracks?.total ?? 0,
+      spotifyOwned: p.owner?.id === "spotify",
+    }));
 }
 
 export async function listPlaylistTracks(
@@ -153,10 +159,21 @@ export async function listPlaylistTracks(
   playlistId: string
 ): Promise<SpotifyTrack[]> {
   const fields = "items(track(name,duration_ms,artists(name),album(images)))";
-  const body = (await spotifyGet(
-    token,
-    `/playlists/${playlistId}/tracks?limit=100&fields=${encodeURIComponent(fields)}`
-  )) as {
+  let body: unknown;
+  try {
+    body = await spotifyGet(
+      token,
+      `/playlists/${playlistId}/tracks?limit=100&fields=${encodeURIComponent(fields)}`
+    );
+  } catch (err) {
+    if (err instanceof Error && /403|404/.test(err.message)) {
+      throw new Error(
+        "spotify doesn't let apps read its own curated playlists — pick one of yours"
+      );
+    }
+    throw err;
+  }
+  const typed = body as {
     items: {
       track: {
         name: string;
@@ -166,7 +183,7 @@ export async function listPlaylistTracks(
       } | null;
     }[];
   };
-  return body.items
+  return typed.items
     .filter((i) => i.track)
     .map((i) => ({
       title: i.track!.name,
