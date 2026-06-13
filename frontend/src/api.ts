@@ -1,7 +1,14 @@
 // API contract with the FastAPI backend. These types mirror backend/engine.py
 // and backend/main.py exactly — change them together.
 
-const API_BASE = import.meta.env.VITE_API_BASE ?? "http://localhost:8000";
+// VITE_API_BASE overrides if set; otherwise production builds use the HF
+// Space backend and local dev uses the local FastAPI server. Hardcoded so a
+// missing/misconfigured Vercel env var can't break the live site.
+const API_BASE =
+  import.meta.env.VITE_API_BASE ??
+  (import.meta.env.PROD
+    ? "https://arjunsh6251-fermata.hf.space"
+    : "http://localhost:8000");
 
 export interface Track {
   id: string; // namespaced by source, e.g. "deezer:123" / "itunes:456"
