@@ -28,6 +28,13 @@ app.add_middleware(
 )
 
 
+@app.get("/api/health")
+async def health():
+    # cheap liveness ping — no external calls; used by the keep-warm cron to
+    # stop Render's free tier from spinning down between visitors
+    return {"ok": True}
+
+
 @app.get("/api/search")
 async def search(q: str):
     if not q.strip():
