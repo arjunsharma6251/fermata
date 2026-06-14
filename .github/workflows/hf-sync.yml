@@ -14,6 +14,14 @@ name: sync-to-hf
 on:
   push:
     branches: [main]
+    # only sync when something in the HF Docker image actually changes —
+    # frontend/docs/test-script commits don't belong on the Space (and
+    # spamming the push trips HF's git rate limit, HTTP 429)
+    paths:
+      - "backend/**"
+      - "requirements.txt"
+      - "Dockerfile"
+      - ".dockerignore"
   workflow_dispatch: {}
 
 jobs:
