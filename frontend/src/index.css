@@ -224,6 +224,15 @@ img {
   border-top: 1px solid var(--line);
 }
 
+@keyframes node-pop {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
 /* respect prefers-reduced-motion for the few CSS-driven transitions;
    Motion handles its own via MotionConfig reducedMotion="user" */
 @media (prefers-reduced-motion: reduce) {

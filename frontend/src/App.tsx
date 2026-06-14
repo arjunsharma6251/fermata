@@ -7,8 +7,10 @@ import { AnimatePresence, MotionConfig, motion } from "motion/react";
 import type { Analysis, Track } from "./api";
 import { analyzeTrack, searchTracks } from "./api";
 import { FALLBACK_ACCENT, extractAccent, setAccent } from "./theme";
+import { recordAnalysis, songKey, stats, subscribe } from "./discovery";
 import { Analyzing } from "./components/Analyzing";
 import { ResultView } from "./components/ResultView";
+import { CraftMap } from "./components/CraftMap";
 import { formatTime } from "./lrc";
 import type { SpotifyPlaylist, SpotifyTrack } from "./spotify";
 import {
@@ -50,6 +52,11 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [lastTracks, setLastTracks] = useState<Track[]>([]);
   const [scrolled, setScrolled] = useState(false);
+  const [mapOpen, setMapOpen] = useState(false);
+  const [mapFocus, setMapFocus] = useState<string | null>(null);
+  const [discStats, setDiscStats] = useState(stats);
+
+  useEffect(() => subscribe(() => setDiscStats(stats())), []);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 8);
@@ -84,6 +91,17 @@ export default function App() {
       try {
         const [analysis, accent] = await Promise.all([analyzeTrack(track), accentPromise]);
         setAccent(accent);
+        // grow the persistent discovery map
+        recordAnalysis(
+          {
+            key: songKey(analysis.track.title, analysis.track.artist),
+            title: analysis.track.title,
+            artist: analysis.track.artist,
+            cover: analysis.track.cover,
+          },
+          accent,
+          analysis.explanation.suggestions ?? []
+        );
         setPhase((p) =>
           p.name === "analyzing" ? { name: "result", analysis, tracks: [] } : p
         );
@@ -215,26 +233,40 @@ export default function App() {
               <Wordmark size={27} />
             </button>
             {phase.name !== "analyzing" && (
-              <form
-                onSubmit={onSearch}
-                style={{ display: "flex", gap: 10, alignItems: "baseline" }}
-              >
-                <input
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  placeholder="another song…"
-                  aria-label="search for a song"
-                  style={{
-                    width: "min(240px, 38vw)",
-                    fontSize: 14.5,
-                    paddingBottom: 3,
-                    borderBottom: "1px solid var(--line)",
-                  }}
-                />
-                <button type="submit" className="mono">
-                  search
-                </button>
-              </form>
+              <div style={{ display: "flex", gap: 18, alignItems: "baseline" }}>
+                {discStats.explored > 0 && (
+                  <button
+                    onClick={() => {
+                      setMapFocus(null);
+                      setMapOpen(true);
+                    }}
+                    className="mono"
+                    title="your discovery map"
+                  >
+                    your map · {discStats.explored} ◈
+                  </button>
+                )}
+                <form
+                  onSubmit={onSearch}
+                  style={{ display: "flex", gap: 10, alignItems: "baseline" }}
+                >
+                  <input
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    placeholder="another song…"
+                    aria-label="search for a song"
+                    style={{
+                      width: "min(220px, 34vw)",
+                      fontSize: 14.5,
+                      paddingBottom: 3,
+                      borderBottom: "1px solid var(--line)",
+                    }}
+                  />
+                  <button type="submit" className="mono">
+                    search
+                  </button>
+                </form>
+              </div>
             )}
           </div>
         </header>
@@ -293,6 +325,18 @@ export default function App() {
                 style={{ marginTop: 10, textDecoration: "underline" }}
               >
                 or browse your spotify playlists →
+              </button>
+            )}
+            {discStats.explored > 0 && (
+              <button
+                className="mono-faint"
+                onClick={() => {
+                  setMapFocus(null);
+                  setMapOpen(true);
+                }}
+                style={{ marginTop: 10, textDecoration: "underline" }}
+              >
+                or open your craft map · {discStats.explored} explored ◈
               </button>
             )}
           </motion.div>
@@ -506,10 +550,24 @@ export default function App() {
               analysis={phase.analysis}
               onBack={backToResults}
               onSuggestion={analyzeSuggestion}
+              onOpenMap={(key) => {
+                setMapFocus(key);
+                setMapOpen(true);
+              }}
             />
           </motion.div>
         )}
       </AnimatePresence>
+
+      <CraftMap
+        open={mapOpen}
+        focusKey={mapFocus}
+        onClose={() => setMapOpen(false)}
+        onAnalyze={(title, artist, prefetched) => {
+          setMapOpen(false);
+          void analyzeSuggestion(title, artist, prefetched);
+        }}
+      />
     </MotionConfig>
   );
 }

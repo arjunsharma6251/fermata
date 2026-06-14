@@ -1,10 +1,12 @@
-// The craft map — a force-directed graph of songs connected by shared craft
-// moves. The current song is the center; its suggestions radiate out. Click
-// a song to reveal ITS craft links (cheap /api/suggest), growing the web.
-// Click "analyze" on any node to dive into its full read.
+// Your discovery map — a persistent, force-directed graph of every song
+// you've analyzed and the craft links between them (from src/discovery.ts).
+// Songs you've analyzed are "visited" and wear their own accent color;
+// their suggestions are "frontier" nodes (dashed, dimmed) waiting to be
+// explored. Click a frontier node to reveal ITS links (cheap /api/suggest)
+// and grow the web; "analyze" any node to dive into its full read.
 //
-// Interaction: drag nodes to rearrange (they pin where you drop them), drag
-// the background to pan, scroll to zoom toward the cursor.
+// Interaction: drag nodes to rearrange (pins on drop), drag background to
+// pan, scroll to zoom toward the cursor.
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
@@ -16,18 +18,20 @@ import {
   forceSimulation,
   type Simulation,
 } from "d3-force";
-import type { Analysis, Track } from "../api";
+import type { Track } from "../api";
 import { fetchSuggestions, searchTracks } from "../api";
+import { clearDiscovery, getGraph, recordLinks, setCover, stats, subscribe } from "../discovery";
 
 interface MapNode {
-  id: string;
+  key: string;
   title: string;
   artist: string;
   cover: string | null;
-  track: Track | null;
-  center: boolean;
-  expanded: boolean;
+  analyzed: boolean;
+  accent: string | null;
+  expanded: boolean; // already has outgoing craft links
   loading: boolean;
+  track: Track | null;
   x?: number;
   y?: number;
   fx?: number | null;
@@ -41,25 +45,22 @@ interface MapLink {
 
 const VW = 1000;
 const VH = 680;
-const MAX_NODES = 40;
-const DRAG_THRESHOLD = 4; // px of movement before a press counts as a drag
-
-const key = (title: string, artist: string) =>
-  `${title}|${artist}`.toLowerCase().replace(/\s+/g, " ").trim();
+const DRAG_THRESHOLD = 4;
 
 interface CraftMapProps {
-  analysis: Analysis;
   open: boolean;
+  focusKey: string | null;
   onClose: () => void;
   onAnalyze: (title: string, artist: string, prefetched?: Track) => void;
 }
 
-export function CraftMap({ analysis, open, onClose, onAnalyze }: CraftMapProps) {
-  const nodesRef = useRef<MapNode[]>([]);
+export function CraftMap({ open, focusKey, onClose, onAnalyze }: CraftMapProps) {
+  const nodesRef = useRef<Map<string, MapNode>>(new Map());
   const linksRef = useRef<MapLink[]>([]);
   const simRef = useRef<Simulation<MapNode, MapLink> | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
-  const tRef = useRef({ k: 1, x: 0, y: 0 }); // pan/zoom transform
+  const tRef = useRef({ k: 1, x: 0, y: 0 });
+  const coverTried = useRef<Set<string>>(new Set());
   const dragRef = useRef<{
     mode: "node" | "pan";
     node?: MapNode;
@@ -71,59 +72,77 @@ export function CraftMap({ analysis, open, onClose, onAnalyze }: CraftMapProps) 
   } | null>(null);
   const [, forceTick] = useState(0);
   const [hover, setHover] = useState<string | null>(null);
+  const [st, setSt] = useState(stats);
   const render = useCallback(() => forceTick((t) => t + 1), []);
 
-  const restart = useCallback(() => {
-    const sim = simRef.current;
-    if (!sim) return;
-    sim.nodes(nodesRef.current);
-    (sim.force("link") as ReturnType<typeof forceLink<MapNode, MapLink>>).links(linksRef.current);
-    sim.alpha(0.9).restart();
-  }, []);
+  // rebuild the node/link arrays from the persistent store, preserving the
+  // positions of nodes that are already on screen
+  const derive = useCallback(() => {
+    const { nodes, links } = getGraph();
+    const outgoing = new Set(links.map((l) => l.from));
+    const seen = new Set<string>();
+    const byKey = nodesRef.current;
 
-  const grow = useCallback(
-    async (parent: MapNode, sugg: { title: string; artist: string; why: string }[]) => {
-      const existing = new Set(nodesRef.current.map((n) => key(n.title, n.artist)));
-      for (const s of sugg) {
-        if (nodesRef.current.length >= MAX_NODES) break;
-        const k = key(s.title, s.artist);
-        if (existing.has(k)) {
-          linksRef.current.push({
-            source: parent.id,
-            target: nodeIdFor(nodesRef.current, k),
-            why: s.why,
-          });
-          continue;
-        }
-        existing.add(k);
-        const node: MapNode = {
-          id: `n${nodesRef.current.length}-${k}`,
-          title: s.title,
-          artist: s.artist,
-          cover: null,
-          track: null,
-          center: false,
-          expanded: false,
+    for (const g of nodes) {
+      seen.add(g.key);
+      const existing = byKey.get(g.key);
+      if (existing) {
+        existing.title = g.title;
+        existing.artist = g.artist;
+        if (g.cover) existing.cover = g.cover;
+        existing.analyzed = g.analyzed;
+        existing.accent = g.accent;
+        existing.expanded = outgoing.has(g.key);
+      } else {
+        // place a new node near a neighbour already on screen, else center
+        const parentKey = links.find((l) => l.to === g.key && byKey.has(l.from))?.from;
+        const parent = parentKey ? byKey.get(parentKey) : undefined;
+        byKey.set(g.key, {
+          key: g.key,
+          title: g.title,
+          artist: g.artist,
+          cover: g.cover,
+          analyzed: g.analyzed,
+          accent: g.accent,
+          expanded: outgoing.has(g.key),
           loading: false,
-          x: (parent.x ?? VW / 2) + (Math.random() - 0.5) * 70,
-          y: (parent.y ?? VH / 2) + (Math.random() - 0.5) * 70,
-        };
-        nodesRef.current.push(node);
-        linksRef.current.push({ source: parent.id, target: node.id, why: s.why });
-        searchTracks(`${s.title} ${s.artist}`)
-          .then((r) => {
-            node.cover = r[0]?.cover ?? null;
-            node.track = r[0] ?? null;
-            render();
-          })
-          .catch(() => {});
+          track: null,
+          x: (parent?.x ?? VW / 2) + (Math.random() - 0.5) * 80,
+          y: (parent?.y ?? VH / 2) + (Math.random() - 0.5) * 80,
+        });
       }
-      restart();
-      render();
-    },
-    [restart, render]
-  );
+    }
+    for (const k of [...byKey.keys()]) if (!seen.has(k)) byKey.delete(k);
 
+    // pin the focus node at center for orientation
+    const focus =
+      (focusKey && byKey.get(focusKey)) ??
+      [...byKey.values()].filter((n) => n.analyzed).sort(() => 0)[0];
+    for (const n of byKey.values()) {
+      if (n === focus) {
+        n.fx = VW / 2;
+        n.fy = VH / 2;
+      }
+    }
+
+    linksRef.current = links
+      .map((l) => {
+        const s = byKey.get(l.from);
+        const t = byKey.get(l.to);
+        return s && t ? { source: s, target: t, why: l.why } : null;
+      })
+      .filter((l): l is NonNullable<typeof l> => l !== null);
+
+    const sim = simRef.current;
+    if (sim) {
+      sim.nodes([...byKey.values()]);
+      (sim.force("link") as ReturnType<typeof forceLink<MapNode, MapLink>>).links(linksRef.current);
+      sim.alpha(0.8).restart();
+    }
+    render();
+  }, [focusKey, render]);
+
+  // expand a node (cheap suggest) — grows the persistent graph
   const expand = useCallback(
     async (node: MapNode) => {
       if (node.expanded || node.loading) return;
@@ -131,76 +150,82 @@ export function CraftMap({ analysis, open, onClose, onAnalyze }: CraftMapProps) 
       render();
       try {
         const sugg = await fetchSuggestions(node.title, node.artist);
-        node.expanded = true;
-        await grow(node, sugg);
+        recordLinks(node.key, sugg); // store change -> derive via subscription
       } catch {
-        /* leave unexpanded so it can be retried */
+        /* allow retry */
       } finally {
         node.loading = false;
         render();
       }
     },
-    [grow, render]
+    [render]
   );
 
-  // seed the graph when opened
+  // seed sim + subscribe on open
   useEffect(() => {
     if (!open) return;
     tRef.current = { k: 1, x: 0, y: 0 };
-    const center: MapNode = {
-      id: "center",
-      title: analysis.track.title,
-      artist: analysis.track.artist,
-      cover: analysis.track.cover,
-      track: analysis.track,
-      center: true,
-      expanded: true,
-      loading: false,
-      x: VW / 2,
-      y: VH / 2,
-      fx: VW / 2,
-      fy: VH / 2,
-    };
-    nodesRef.current = [center];
+    nodesRef.current = new Map();
     linksRef.current = [];
+    coverTried.current = new Set();
 
-    const sim = forceSimulation<MapNode, MapLink>(nodesRef.current)
-      .force("charge", forceManyBody().strength(-620))
+    const sim = forceSimulation<MapNode, MapLink>([])
+      .force("charge", forceManyBody().strength(-640))
       .force(
         "link",
-        forceLink<MapNode, MapLink>(linksRef.current)
-          .id((d) => d.id)
-          .distance(175)
+        forceLink<MapNode, MapLink>([])
+          .id((d) => d.key)
+          .distance(180)
           .strength(0.45)
       )
       .force("center", forceCenter(VW / 2, VH / 2).strength(0.04))
-      // bigger collide radius so labels don't pile up on neighbours
-      .force("collide", forceCollide<MapNode>((d) => (d.center ? 90 : 78)))
+      .force("collide", forceCollide<MapNode>((d) => (d.analyzed ? 88 : 70)))
       .on("tick", render);
     simRef.current = sim;
 
-    void grow(center, analysis.explanation.suggestions ?? []);
-
+    derive();
+    setSt(stats());
+    const unsub = subscribe(() => {
+      derive();
+      setSt(stats());
+    });
     return () => {
       sim.stop();
       simRef.current = null;
+      unsub();
     };
-  }, [open, analysis, grow, render]);
+  }, [open, derive, render]);
+
+  // lazily fetch covers (+ analyzable track) for nodes that lack art
+  useEffect(() => {
+    if (!open) return;
+    for (const n of nodesRef.current.values()) {
+      if (n.cover || coverTried.current.has(n.key)) continue;
+      coverTried.current.add(n.key);
+      searchTracks(`${n.title} ${n.artist}`)
+        .then((r) => {
+          if (r[0]) {
+            n.cover = r[0].cover;
+            n.track = r[0];
+            setCover(n.key, r[0].cover);
+            render();
+          }
+        })
+        .catch(() => {});
+    }
+  });
 
   // ---------------------------------------------------- pan / zoom / drag
-
-  function toViewBox(cx: number, cy: number): { x: number; y: number } {
+  function toViewBox(cx: number, cy: number) {
     const ctm = svgRef.current?.getScreenCTM();
     if (!ctm) return { x: 0, y: 0 };
     const p = new DOMPoint(cx, cy).matrixTransform(ctm.inverse());
     return { x: p.x, y: p.y };
   }
-  function vbToGraph(vb: { x: number; y: number }): { x: number; y: number } {
+  function vbToGraph(vb: { x: number; y: number }) {
     const { k, x, y } = tRef.current;
     return { x: (vb.x - x) / k, y: (vb.y - y) / k };
   }
-
-  // wheel-zoom via a non-passive native listener (so preventDefault works)
   useEffect(() => {
     const svg = svgRef.current;
     if (!svg || !open) return;
@@ -208,7 +233,7 @@ export function CraftMap({ analysis, open, onClose, onAnalyze }: CraftMapProps) 
       e.preventDefault();
       const vb = toViewBox(e.clientX, e.clientY);
       const { k, x, y } = tRef.current;
-      const nk = Math.min(3, Math.max(0.4, k * (e.deltaY < 0 ? 1.12 : 1 / 1.12)));
+      const nk = Math.min(3, Math.max(0.35, k * (e.deltaY < 0 ? 1.12 : 1 / 1.12)));
       tRef.current = { k: nk, x: vb.x - nk * ((vb.x - x) / k), y: vb.y - nk * ((vb.y - y) / k) };
       render();
     };
@@ -218,13 +243,7 @@ export function CraftMap({ analysis, open, onClose, onAnalyze }: CraftMapProps) 
 
   function onNodePointerDown(e: React.PointerEvent, n: MapNode) {
     e.stopPropagation();
-    dragRef.current = {
-      mode: "node",
-      node: n,
-      moved: false,
-      startClientX: e.clientX,
-      startClientY: e.clientY,
-    };
+    dragRef.current = { mode: "node", node: n, moved: false, startClientX: e.clientX, startClientY: e.clientY };
     simRef.current?.alphaTarget(0.3).restart();
   }
   function onBackgroundPointerDown(e: React.PointerEvent) {
@@ -240,10 +259,8 @@ export function CraftMap({ analysis, open, onClose, onAnalyze }: CraftMapProps) 
   function onPointerMove(e: React.PointerEvent) {
     const d = dragRef.current;
     if (!d) return;
-    if (!d.moved) {
-      const dist = Math.hypot(e.clientX - d.startClientX, e.clientY - d.startClientY);
-      if (dist > DRAG_THRESHOLD) d.moved = true;
-    }
+    if (!d.moved && Math.hypot(e.clientX - d.startClientX, e.clientY - d.startClientY) > DRAG_THRESHOLD)
+      d.moved = true;
     if (d.mode === "node" && d.node) {
       const g = vbToGraph(toViewBox(e.clientX, e.clientY));
       d.node.fx = g.x;
@@ -262,16 +279,14 @@ export function CraftMap({ analysis, open, onClose, onAnalyze }: CraftMapProps) 
     const d = dragRef.current;
     dragRef.current = null;
     simRef.current?.alphaTarget(0);
-    if (d?.mode === "node" && d.node && !d.moved) {
-      void expand(d.node); // a press without movement = a click
-    }
+    if (d?.mode === "node" && d.node && !d.moved) void expand(d.node);
   }
 
-  const nodes = nodesRef.current;
+  const nodes = [...nodesRef.current.values()];
   const links = linksRef.current;
   const t = tRef.current;
-  const resolve = (end: string | MapNode): MapNode | undefined =>
-    typeof end === "string" ? nodes.find((n) => n.id === end) : end;
+  const resolve = (end: string | MapNode) =>
+    typeof end === "string" ? nodesRef.current.get(end) : end;
 
   return (
     <AnimatePresence>
@@ -309,15 +324,29 @@ export function CraftMap({ analysis, open, onClose, onAnalyze }: CraftMapProps) 
                   letterSpacing: "-0.015em",
                 }}
               >
-                the craft map<span style={{ color: "var(--accent)" }}>.</span>
+                your craft map<span style={{ color: "var(--accent)" }}>.</span>
               </span>
               <p className="mono-faint" style={{ marginTop: 4 }}>
-                click a song to reveal its craft links · drag to move · scroll to zoom
+                {st.explored} explored · {st.frontier} to discover · {st.links} links ·{" "}
+                drag to move · scroll to zoom
               </p>
             </div>
-            <button onClick={onClose} className="mono" style={{ textDecoration: "underline" }}>
-              close ✕
-            </button>
+            <div style={{ display: "flex", gap: 16, alignItems: "baseline" }}>
+              {st.explored > 1 && (
+                <button
+                  onClick={() => {
+                    if (confirm("Clear your whole discovery map?")) clearDiscovery();
+                  }}
+                  className="mono-faint"
+                  style={{ textDecoration: "underline" }}
+                >
+                  clear
+                </button>
+              )}
+              <button onClick={onClose} className="mono" style={{ textDecoration: "underline" }}>
+                close ✕
+              </button>
+            </div>
           </div>
 
           <svg
@@ -330,13 +359,21 @@ export function CraftMap({ analysis, open, onClose, onAnalyze }: CraftMapProps) 
             onPointerUp={onPointerUp}
             onPointerLeave={onPointerUp}
           >
+            <defs>
+              <pattern id="dotgrid" width="28" height="28" patternUnits="userSpaceOnUse">
+                <circle cx="1.2" cy="1.2" r="1.2" fill="var(--line)" />
+              </pattern>
+            </defs>
             <g transform={`translate(${t.x}, ${t.y}) scale(${t.k})`}>
+              {/* forensic dot-grid backdrop */}
+              <rect x={-3000} y={-3000} width={6000} height={6000} fill="url(#dotgrid)" opacity={0.55} />
+
               {/* edges */}
               {links.map((l, i) => {
                 const s = resolve(l.source);
                 const tg = resolve(l.target);
                 if (!s || !tg) return null;
-                const lit = hover === s.id || hover === tg.id;
+                const lit = hover === s.key || hover === tg.key;
                 const mx = ((s.x ?? 0) + (tg.x ?? 0)) / 2;
                 const my = ((s.y ?? 0) + (tg.y ?? 0)) / 2;
                 return (
@@ -348,7 +385,7 @@ export function CraftMap({ analysis, open, onClose, onAnalyze }: CraftMapProps) 
                       y2={tg.y}
                       stroke={lit ? "var(--accent)" : "var(--bar)"}
                       strokeWidth={lit ? 1.5 : 1}
-                      opacity={lit ? 1 : 0.5}
+                      opacity={lit ? 1 : 0.45}
                     />
                     {lit && (
                       <text
@@ -357,7 +394,7 @@ export function CraftMap({ analysis, open, onClose, onAnalyze }: CraftMapProps) 
                         textAnchor="middle"
                         style={{ fontFamily: "var(--mono)", fontSize: 10, fill: "var(--ink-soft)" }}
                       >
-                        {l.why.length > 54 ? l.why.slice(0, 52) + "…" : l.why}
+                        {l.why.length > 56 ? l.why.slice(0, 54) + "…" : l.why}
                       </text>
                     )}
                   </g>
@@ -366,24 +403,34 @@ export function CraftMap({ analysis, open, onClose, onAnalyze }: CraftMapProps) 
 
               {/* nodes */}
               {nodes.map((n) => {
-                const r = n.center ? 40 : 30;
+                const isFocus = n.key === focusKey;
+                const r = n.analyzed ? 34 : 26;
+                const ring = n.analyzed ? n.accent ?? "var(--accent)" : "var(--grey)";
                 return (
                   <g
-                    key={n.id}
+                    key={n.key}
                     transform={`translate(${n.x ?? 0}, ${n.y ?? 0})`}
-                    style={{ cursor: "grab" }}
+                    style={{ cursor: "grab", animation: "node-pop 0.5s ease-out" }}
+                    opacity={n.analyzed ? 1 : 0.62}
                     onPointerDown={(e) => onNodePointerDown(e, n)}
-                    onMouseEnter={() => setHover(n.id)}
-                    onMouseLeave={() => setHover((h) => (h === n.id ? null : h))}
+                    onMouseEnter={() => setHover(n.key)}
+                    onMouseLeave={() => setHover((h) => (h === n.key ? null : h))}
                   >
-                    <clipPath id={`clip-${n.id}`}>
+                    {isFocus && (
+                      <circle r={r + 7} fill="none" stroke={ring} strokeWidth={1.5} opacity={0.5}>
+                        <animate attributeName="r" values={`${r + 5};${r + 12};${r + 5}`} dur="2.4s" repeatCount="indefinite" />
+                        <animate attributeName="opacity" values="0.5;0;0.5" dur="2.4s" repeatCount="indefinite" />
+                      </circle>
+                    )}
+                    <clipPath id={`clip-${n.key}`}>
                       <circle r={r} />
                     </clipPath>
                     <circle
                       r={r + 3}
                       fill="none"
-                      stroke={n.center || hover === n.id ? "var(--accent)" : "var(--line)"}
-                      strokeWidth={n.center ? 2 : 1.5}
+                      stroke={hover === n.key ? "var(--accent)" : ring}
+                      strokeWidth={n.analyzed ? 2 : 1.5}
+                      strokeDasharray={n.analyzed ? undefined : "3 4"}
                     />
                     <circle r={r} fill="var(--bar)" />
                     {n.cover && (
@@ -393,27 +440,13 @@ export function CraftMap({ analysis, open, onClose, onAnalyze }: CraftMapProps) 
                         y={-r}
                         width={r * 2}
                         height={r * 2}
-                        clipPath={`url(#clip-${n.id})`}
+                        clipPath={`url(#clip-${n.key})`}
                         preserveAspectRatio="xMidYMid slice"
                       />
                     )}
                     {n.loading && (
-                      <circle
-                        r={r + 8}
-                        fill="none"
-                        stroke="var(--accent)"
-                        strokeWidth={2}
-                        strokeDasharray="6 8"
-                        opacity={0.7}
-                      >
-                        <animateTransform
-                          attributeName="transform"
-                          type="rotate"
-                          from="0"
-                          to="360"
-                          dur="1.4s"
-                          repeatCount="indefinite"
-                        />
+                      <circle r={r + 9} fill="none" stroke="var(--accent)" strokeWidth={2} strokeDasharray="6 8" opacity={0.8}>
+                        <animateTransform attributeName="transform" type="rotate" from="0" to="360" dur="1.4s" repeatCount="indefinite" />
                       </circle>
                     )}
                     <text
@@ -435,14 +468,13 @@ export function CraftMap({ analysis, open, onClose, onAnalyze }: CraftMapProps) 
                     >
                       {n.artist.length > 30 ? n.artist.slice(0, 28) + "…" : n.artist}
                     </text>
-                    {hover === n.id && !n.center && (
+                    {hover === n.key && (
                       <g
                         transform={`translate(0, ${-r - 16})`}
                         style={{ cursor: "pointer" }}
                         onPointerDown={(e) => e.stopPropagation()}
                         onClick={(e) => {
                           e.stopPropagation();
-                          onClose();
                           onAnalyze(n.title, n.artist, n.track ?? undefined);
                         }}
                       >
@@ -450,11 +482,7 @@ export function CraftMap({ analysis, open, onClose, onAnalyze }: CraftMapProps) 
                         <text
                           textAnchor="middle"
                           y={2}
-                          style={{
-                            fontFamily: "var(--mono)",
-                            fontSize: 10.5,
-                            fill: "var(--canvas)",
-                          }}
+                          style={{ fontFamily: "var(--mono)", fontSize: 10.5, fill: "var(--canvas)" }}
                         >
                           analyze ↗
                         </text>
@@ -469,8 +497,4 @@ export function CraftMap({ analysis, open, onClose, onAnalyze }: CraftMapProps) 
       )}
     </AnimatePresence>
   );
-}
-
-function nodeIdFor(nodes: MapNode[], k: string): string {
-  return nodes.find((n) => key(n.title, n.artist) === k)?.id ?? k;
 }

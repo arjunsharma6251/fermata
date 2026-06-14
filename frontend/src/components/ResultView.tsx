@@ -11,7 +11,7 @@ import { usePlayer } from "../usePlayer";
 import { formatTime, nearestLineIndex, parseClipStamp, parseLrc, parseSongStamp } from "../lrc";
 import { Waveform, type ClipAnnotation } from "./Waveform";
 import { ShareModal } from "./ShareModal";
-import { CraftMap } from "./CraftMap";
+import { songKey } from "../discovery";
 
 const BLOOM_AT_MS = 1500; // after the 96-bar draw-in settles
 
@@ -19,9 +19,10 @@ interface ResultViewProps {
   analysis: Analysis;
   onBack: () => void;
   onSuggestion: (title: string, artist: string, prefetched?: Track) => void;
+  onOpenMap: (focusKey: string) => void;
 }
 
-export function ResultView({ analysis, onBack, onSuggestion }: ResultViewProps) {
+export function ResultView({ analysis, onBack, onSuggestion, onOpenMap }: ResultViewProps) {
   const { track, features, waveform, explanation, lyrics } = analysis;
 
   // prefetch the top match for each suggestion — gives its album art for the
@@ -51,7 +52,6 @@ export function ResultView({ analysis, onBack, onSuggestion }: ResultViewProps) 
   const player = usePlayer(track.preview);
   const [bloom, setBloom] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
-  const [mapOpen, setMapOpen] = useState(false);
   const [lyricsOpen, setLyricsOpen] = useState(false);
   const [litLine, setLitLine] = useState<number | null>(null);
   const lineRefs = useRef<(HTMLParagraphElement | null)[]>([]);
@@ -415,7 +415,7 @@ export function ResultView({ analysis, onBack, onSuggestion }: ResultViewProps) 
           >
             <p className="mono-faint">if this moved you · next</p>
             <button
-              onClick={() => setMapOpen(true)}
+              onClick={() => onOpenMap(songKey(track.title, track.artist))}
               className="mono"
               style={{
                 padding: "7px 13px",
@@ -517,12 +517,6 @@ export function ResultView({ analysis, onBack, onSuggestion }: ResultViewProps) 
       )}
 
       <ShareModal analysis={analysis} open={shareOpen} onClose={() => setShareOpen(false)} />
-      <CraftMap
-        analysis={analysis}
-        open={mapOpen}
-        onClose={() => setMapOpen(false)}
-        onAnalyze={onSuggestion}
-      />
     </div>
   );
 }
