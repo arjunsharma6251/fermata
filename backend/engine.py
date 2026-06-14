@@ -275,6 +275,7 @@ FULL LYRICS{synced_note}:
 
 Rules — these are hard requirements:
 - Every single claim must be specific to THIS recording. Before writing a sentence, test it: could this sentence appear in an explanation of a different song without change? If yes, cut it or sharpen it until it couldn't.
+- GROUNDING measured ('clip M:SS') moments — strict: a moment may use a "clip M:SS" timestamp ONLY when that time matches (within ~1.5s) a time listed in `biggest_energy_shifts`, or a clear feature of `energy_curve_time_value`. Its `what_happens` must state the measured change there (e.g. "energy drops from 0.82 to 0.18"). NEVER invent a clip time, and never claim a clip event the measured data doesn't show. The clip's start (~0:00) and end (~{clip_end}) are just where the 30-second preview begins and ends — they are NOT musical events: never describe a "fade out", "hard cut-off", "the song ends", or "it builds to silence" at the clip boundary. If a moment can't be grounded in the measured clip data, give it a full-song timestamp (M:SS with NO "clip") as inferred or lyrics instead.
 - Always connect a mechanical cause to a felt effect. Not "the song uses dynamics" but "the drums vanish for two bars right before the hook, so when they slam back it feels like being let go and caught."
 - Cover both the music and the lyrics, weighted by what actually carries this song. If it's a lyric-first song, say so and dig into the writing (rhyme, repetition, what's NOT said, where the phrasing breaks). If it's production-first, dig into the sound.
 - Plain language. If you need a technical term, explain it in the same breath in plain words.
@@ -316,10 +317,13 @@ def build_prompt(artist: str, title: str, features: dict, lyrics: dict | None) -
     else:
         lyr_text, synced_note = "(instrumental or lyrics unavailable — analyze the music only)", ""
     llm_features = {k: v for k, v in features.items() if k != "waveform"}
+    clip_s = int(features.get("clip_seconds", 30))
+    clip_end = f"{clip_s // 60}:{clip_s % 60:02d}"
     return PROMPT_TEMPLATE.format(
         title=title, artist=artist,
         features=json.dumps(llm_features, indent=2),
         lyrics=lyr_text, synced_note=synced_note,
+        clip_end=clip_end,
     )
 
 

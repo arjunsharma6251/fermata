@@ -83,15 +83,34 @@ export function ResultView({ analysis, onBack, onSuggestion }: ResultViewProps) 
     [explanation.moments]
   );
 
-  // the marker: the measured moment, else the loudest bar
+  // The marker anchors to a REAL measured event — the biggest energy shift
+  // away from the clip's edges (the preview's start/end aren't musical
+  // events), else the loudest bar. We only borrow an LLM moment's label when
+  // its time actually lines up; otherwise we describe the measured change
+  // honestly. This keeps the accent on something the audio genuinely does.
   const marker: ClipAnnotation = useMemo(() => {
-    if (clipAnnotations.length > 0) return clipAnnotations[0];
-    const peak = waveform.indexOf(Math.max(...waveform));
-    return {
-      seconds: (peak / (waveform.length - 1)) * features.clip_seconds,
-      label: "peak energy",
-    };
-  }, [clipAnnotations, waveform, features.clip_seconds]);
+    const dur = features.clip_seconds;
+    const edge = 2.5;
+    const shifts = features.biggest_energy_shifts
+      .filter((s) => s.time_s > edge && s.time_s < dur - edge)
+      .map((s) => ({ ...s, mag: Math.abs(s.energy_after - s.energy_before) }))
+      .sort((a, b) => b.mag - a.mag);
+
+    let seconds: number;
+    let measuredLabel: string;
+    if (shifts[0] && shifts[0].mag >= 0.25) {
+      seconds = shifts[0].time_s;
+      measuredLabel = shifts[0].direction === "drop" ? "energy drops out" : "energy surges";
+    } else {
+      const peak = waveform.indexOf(Math.max(...waveform));
+      seconds = (peak / (waveform.length - 1)) * dur;
+      measuredLabel = "energy peak";
+    }
+    const near = clipAnnotations
+      .map((a) => ({ a, d: Math.abs(a.seconds - seconds) }))
+      .sort((x, y) => x.d - y.d)[0];
+    return { seconds, label: near && near.d <= 3 ? near.a.label : measuredLabel };
+  }, [clipAnnotations, waveform, features]);
 
   const calloutMoment: Moment =
     explanation.moments.find((m) => parseClipStamp(m.timestamp) !== null) ??
