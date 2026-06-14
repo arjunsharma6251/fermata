@@ -177,17 +177,20 @@ export default function App() {
   // a suggestion (title + artist) → find the top match and analyze it,
   // creating a discovery loop from one song to the next
   const analyzeSuggestion = useCallback(
-    async (title: string, artist: string) => {
+    async (title: string, artist: string, prefetched?: Track) => {
       setError(null);
       try {
-        const candidates = await searchTracks(`${title} ${artist}`);
-        if (candidates.length === 0) {
-          setError(`couldn't find "${title}" by ${artist} — try the search box`);
-          return;
+        let track = prefetched;
+        if (!track) {
+          const candidates = await searchTracks(`${title} ${artist}`);
+          if (candidates.length === 0) {
+            setError(`couldn't find "${title}" by ${artist} — try the search box`);
+            return;
+          }
+          track = candidates[0];
         }
-        setLastTracks(candidates);
         window.scrollTo({ top: 0, behavior: "smooth" });
-        await onPick(candidates[0]);
+        await onPick(track);
       } catch {
         setError("couldn't load that suggestion");
       }

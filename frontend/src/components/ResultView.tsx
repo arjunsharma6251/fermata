@@ -5,7 +5,8 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "motion/react";
-import type { Analysis, Moment } from "../api";
+import type { Analysis, Moment, Track } from "../api";
+import { searchTracks } from "../api";
 import { usePlayer } from "../usePlayer";
 import { formatTime, nearestLineIndex, parseClipStamp, parseLrc, parseSongStamp } from "../lrc";
 import { Waveform, type ClipAnnotation } from "./Waveform";
@@ -15,11 +16,36 @@ const BLOOM_AT_MS = 1500; // after the 96-bar draw-in settles
 interface ResultViewProps {
   analysis: Analysis;
   onBack: () => void;
-  onSuggestion: (title: string, artist: string) => void;
+  onSuggestion: (title: string, artist: string, prefetched?: Track) => void;
 }
 
 export function ResultView({ analysis, onBack, onSuggestion }: ResultViewProps) {
   const { track, features, waveform, explanation, lyrics } = analysis;
+
+  // prefetch the top match for each suggestion — gives its album art for the
+  // card AND the exact track to analyze on click (so the click is instant)
+  const [suggTracks, setSuggTracks] = useState<(Track | null)[]>([]);
+  useEffect(() => {
+    const sugg = explanation.suggestions;
+    if (!sugg || sugg.length === 0) {
+      setSuggTracks([]);
+      return;
+    }
+    let cancelled = false;
+    setSuggTracks(new Array(sugg.length).fill(null));
+    Promise.all(
+      sugg.map((s) =>
+        searchTracks(`${s.title} ${s.artist}`)
+          .then((r) => r[0] ?? null)
+          .catch(() => null)
+      )
+    ).then((tracks) => {
+      if (!cancelled) setSuggTracks(tracks);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [explanation.suggestions]);
   const player = usePlayer(track.preview);
   const [bloom, setBloom] = useState(false);
   const [lyricsOpen, setLyricsOpen] = useState(false);
@@ -345,46 +371,76 @@ export function ResultView({ analysis, onBack, onSuggestion }: ResultViewProps) 
               gap: 20,
             }}
           >
-            {explanation.suggestions.map((s, i) => (
-              <button
-                key={i}
-                onClick={() => onSuggestion(s.title, s.artist)}
-                title={`analyze ${s.title} by ${s.artist}`}
-                style={{
-                  textAlign: "left",
-                  padding: "18px 20px",
-                  border: "1px solid var(--line)",
-                  borderRadius: 4,
-                  background: "transparent",
-                  transition: "border-color 0.2s ease-out, background-color 0.2s ease-out",
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.borderColor = "var(--accent)";
-                  e.currentTarget.style.backgroundColor = "#f3efe8";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.borderColor = "var(--line)";
-                  e.currentTarget.style.backgroundColor = "transparent";
-                }}
-              >
-                <p
+            {explanation.suggestions.map((s, i) => {
+              const cover = suggTracks[i]?.cover ?? null;
+              return (
+                <button
+                  key={i}
+                  onClick={() => onSuggestion(s.title, s.artist, suggTracks[i] ?? undefined)}
+                  title={`analyze ${s.title} by ${s.artist}`}
                   style={{
-                    fontFamily: "var(--serif)",
-                    fontSize: 18,
-                    lineHeight: 1.25,
-                    marginBottom: 2,
+                    display: "flex",
+                    gap: 14,
+                    alignItems: "flex-start",
+                    textAlign: "left",
+                    padding: "16px 18px",
+                    border: "1px solid var(--line)",
+                    borderRadius: 4,
+                    background: "transparent",
+                    transition: "border-color 0.2s ease-out, background-color 0.2s ease-out",
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.borderColor = "var(--accent)";
+                    e.currentTarget.style.backgroundColor = "#f3efe8";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.borderColor = "var(--line)";
+                    e.currentTarget.style.backgroundColor = "transparent";
                   }}
                 >
-                  {s.title}
-                </p>
-                <p className="mono-faint" style={{ marginBottom: 10 }}>
-                  {s.artist}
-                </p>
-                <p style={{ fontSize: 14, lineHeight: 1.55, color: "var(--ink-soft)" }}>
-                  {s.why}
-                </p>
-              </button>
-            ))}
+                  {/* album art square — neutral placeholder until it loads */}
+                  <div
+                    style={{
+                      width: 58,
+                      height: 58,
+                      flexShrink: 0,
+                      borderRadius: 4,
+                      border: "1px solid var(--line)",
+                      background: "var(--line)",
+                      overflow: "hidden",
+                    }}
+                  >
+                    {cover && (
+                      <img
+                        src={cover}
+                        alt=""
+                        width={58}
+                        height={58}
+                        style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                      />
+                    )}
+                  </div>
+                  <div style={{ minWidth: 0 }}>
+                    <p
+                      style={{
+                        fontFamily: "var(--serif)",
+                        fontSize: 17,
+                        lineHeight: 1.22,
+                        marginBottom: 2,
+                      }}
+                    >
+                      {s.title}
+                    </p>
+                    <p className="mono-faint" style={{ marginBottom: 9 }}>
+                      {s.artist}
+                    </p>
+                    <p style={{ fontSize: 13.5, lineHeight: 1.55, color: "var(--ink-soft)" }}>
+                      {s.why}
+                    </p>
+                  </div>
+                </button>
+              );
+            })}
           </div>
         </motion.section>
       )}
