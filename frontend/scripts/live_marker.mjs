@@ -1,0 +1,13 @@
+import { chromium } from 'playwright';
+const browser = await chromium.launch({ channel: 'chrome' });
+const page = await browser.newPage({ viewport: { width: 1900, height: 900 } });
+await page.goto('https://www.hearfermata.com/', { waitUntil: 'domcontentloaded' });
+await page.fill('input[aria-label="search for a song"]', 'pyramids frank ocean');
+await page.keyboard.press('Enter');
+await page.locator('button:has-text("Pyramids")').first().click({ timeout: 30000 });
+await page.waitForSelector('[aria-label="play preview"]', { timeout: 240000 });
+await page.waitForTimeout(4000);
+const marker = await page.locator('span.mono', { hasText: 'clip' }).first().textContent().catch(()=>null);
+console.log('LIVE marker label:', marker);
+await page.screenshot({ path: '/tmp/live_marker.png', clip: { x: 0, y: 120, width: 1900, height: 360 } });
+await browser.close();
