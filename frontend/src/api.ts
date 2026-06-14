@@ -84,6 +84,17 @@ export async function searchTracks(query: string): Promise<Track[]> {
   return body.results;
 }
 
+export async function fetchSuggestions(title: string, artist: string): Promise<Suggestion[]> {
+  const res = await fetch(`${API_BASE}/api/suggest`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title, artist }),
+  });
+  if (!res.ok) throw new Error(`suggest failed: ${res.status}`);
+  const body = (await res.json()) as { suggestions: Suggestion[] };
+  return body.suggestions;
+}
+
 export async function analyzeTrack(track: Track): Promise<Analysis> {
   // POST the full track (incl. its preview URL) so the backend never needs
   // to reach Deezer's API itself — it just downloads the preview + analyzes.

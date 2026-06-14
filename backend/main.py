@@ -29,6 +29,11 @@ app.add_middleware(
 )
 
 
+class SuggestIn(BaseModel):
+    title: str
+    artist: str
+
+
 class TrackIn(BaseModel):
     """A track the client picked (from Deezer JSONP or the iTunes fallback).
     The client supplies the preview URL so the backend never calls Deezer's
@@ -65,6 +70,21 @@ async def search(q: str):
         return {"results": await run_in_threadpool(engine.search_tracks, q)}
     except Exception as e:
         raise HTTPException(502, f"search failed: {e}")
+
+
+@app.post("/api/suggest")
+async def suggest(s: SuggestIn):
+    # craft-linked suggestions for the map — cheap + cached, no audio
+    key = cache.suggest_key(s.artist, s.title)
+    cached = cache.get_suggest(key)
+    if cached is not None:
+        return {"suggestions": cached, "cached": True}
+    try:
+        result = await run_in_threadpool(engine.suggest_songs, s.title, s.artist)
+    except Exception as e:
+        raise HTTPException(502, f"suggest failed: {e}")
+    cache.put_suggest(key, result)
+    return {"suggestions": result, "cached": False}
 
 
 @app.post("/api/analyze")

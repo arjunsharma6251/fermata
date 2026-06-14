@@ -10,6 +10,8 @@ import { searchTracks } from "../api";
 import { usePlayer } from "../usePlayer";
 import { formatTime, nearestLineIndex, parseClipStamp, parseLrc, parseSongStamp } from "../lrc";
 import { Waveform, type ClipAnnotation } from "./Waveform";
+import { ShareModal } from "./ShareModal";
+import { CraftMap } from "./CraftMap";
 
 const BLOOM_AT_MS = 1500; // after the 96-bar draw-in settles
 
@@ -48,6 +50,8 @@ export function ResultView({ analysis, onBack, onSuggestion }: ResultViewProps) 
   }, [explanation.suggestions]);
   const player = usePlayer(track.preview);
   const [bloom, setBloom] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
+  const [mapOpen, setMapOpen] = useState(false);
   const [lyricsOpen, setLyricsOpen] = useState(false);
   const [litLine, setLitLine] = useState<number | null>(null);
   const lineRefs = useRef<(HTMLParagraphElement | null)[]>([]);
@@ -261,6 +265,27 @@ export function ResultView({ analysis, onBack, onSuggestion }: ResultViewProps) 
               <p style={{ fontFamily: "var(--serif)", fontSize: 18.5, lineHeight: 1.5 }}>
                 {calloutMoment.why_it_hits}
               </p>
+              <button
+                onClick={() => setShareOpen(true)}
+                className="mono"
+                style={{
+                  marginTop: 14,
+                  padding: "7px 13px",
+                  borderRadius: 4,
+                  border: "1px solid var(--line)",
+                  transition: "border-color 0.2s ease-out, color 0.2s ease-out",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.borderColor = "var(--accent)";
+                  e.currentTarget.style.color = "var(--accent)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.borderColor = "var(--line)";
+                  e.currentTarget.style.color = "";
+                }}
+              >
+                share the moment ↗
+              </button>
             </aside>
           )}
 
@@ -361,9 +386,36 @@ export function ResultView({ analysis, onBack, onSuggestion }: ResultViewProps) 
       {explanation.suggestions && explanation.suggestions.length > 0 && (
         <motion.section {...reveal(3)} style={{ marginTop: 80 }}>
           <hr className="hairline" style={{ marginBottom: 28 }} />
-          <p className="mono-faint" style={{ marginBottom: 20 }}>
-            if this moved you · next
-          </p>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "baseline",
+              marginBottom: 20,
+            }}
+          >
+            <p className="mono-faint">if this moved you · next</p>
+            <button
+              onClick={() => setMapOpen(true)}
+              className="mono"
+              style={{
+                padding: "7px 13px",
+                borderRadius: 4,
+                border: "1px solid var(--line)",
+                transition: "border-color 0.2s ease-out, color 0.2s ease-out",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor = "var(--accent)";
+                e.currentTarget.style.color = "var(--accent)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = "var(--line)";
+                e.currentTarget.style.color = "";
+              }}
+            >
+              explore the craft map ◈
+            </button>
+          </div>
           <div
             style={{
               display: "grid",
@@ -444,6 +496,14 @@ export function ResultView({ analysis, onBack, onSuggestion }: ResultViewProps) 
           </div>
         </motion.section>
       )}
+
+      <ShareModal analysis={analysis} open={shareOpen} onClose={() => setShareOpen(false)} />
+      <CraftMap
+        analysis={analysis}
+        open={mapOpen}
+        onClose={() => setMapOpen(false)}
+        onAnalyze={onSuggestion}
+      />
     </div>
   );
 }

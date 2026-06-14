@@ -328,7 +328,7 @@ def call_llm(prompt: str) -> str:
         import anthropic
         client = anthropic.Anthropic()
         msg = client.messages.create(
-            model=MODEL, max_tokens=2048,
+            model=MODEL, max_tokens=4096,  # headroom so the JSON never truncates
             messages=[{"role": "user", "content": prompt}],
         )
         return msg.content[0].text
@@ -363,6 +363,27 @@ def parse_explanation(text: str) -> dict | None:
                                      blob.replace("\r", "")))
         except json.JSONDecodeError:
             return None
+
+
+# ------------------------------------------------------------ craft-map nodes
+
+SUGGEST_PROMPT = """You are a music-craft expert. For the song "{title}" by {artist}, name 3 OTHER well-known songs that EACH share one SPECIFIC, nameable craft move with it — a structural trick, a production choice, or a lyric device. Never "same vibe", "same genre", or "same artist".
+
+Return ONLY this JSON, nothing else:
+{{"suggestions":[{{"title":"","artist":"","why":"one short line naming the shared craft move and how it connects to \\"{title}\\""}}]}}
+
+Pick reasonably well-known recordings so they can be found. Don't repeat "{title}", and don't lean on {artist}'s own catalog."""
+
+
+def suggest_songs(title: str, artist: str) -> list[dict]:
+    """Lightweight craft-linked suggestions for the map (no audio/lyrics)."""
+    raw = call_llm(SUGGEST_PROMPT.format(title=title, artist=artist))
+    parsed = parse_explanation(raw) or {}
+    out = []
+    for s in parsed.get("suggestions", [])[:3]:
+        if s.get("title") and s.get("artist"):
+            out.append({"title": s["title"], "artist": s["artist"], "why": s.get("why", "")})
+    return out
 
 
 # ----------------------------------------------------------------- pipeline
