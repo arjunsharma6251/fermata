@@ -174,6 +174,27 @@ export default function App() {
     [onPick]
   );
 
+  // a suggestion (title + artist) → find the top match and analyze it,
+  // creating a discovery loop from one song to the next
+  const analyzeSuggestion = useCallback(
+    async (title: string, artist: string) => {
+      setError(null);
+      try {
+        const candidates = await searchTracks(`${title} ${artist}`);
+        if (candidates.length === 0) {
+          setError(`couldn't find "${title}" by ${artist} — try the search box`);
+          return;
+        }
+        setLastTracks(candidates);
+        window.scrollTo({ top: 0, behavior: "smooth" });
+        await onPick(candidates[0]);
+      } catch {
+        setError("couldn't load that suggestion");
+      }
+    },
+    [onPick]
+  );
+
   const backToResults = useCallback(() => {
     setPhase(
       lastTracks.length > 0 ? { name: "results", tracks: lastTracks } : { name: "idle" }
@@ -478,7 +499,11 @@ export default function App() {
             animate={{ opacity: 1 }}
             transition={{ duration: 0.3 }}
           >
-            <ResultView analysis={phase.analysis} onBack={backToResults} />
+            <ResultView
+              analysis={phase.analysis}
+              onBack={backToResults}
+              onSuggestion={analyzeSuggestion}
+            />
           </motion.div>
         )}
       </AnimatePresence>

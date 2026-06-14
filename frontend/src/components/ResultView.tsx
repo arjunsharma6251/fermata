@@ -15,9 +15,10 @@ const BLOOM_AT_MS = 1500; // after the 96-bar draw-in settles
 interface ResultViewProps {
   analysis: Analysis;
   onBack: () => void;
+  onSuggestion: (title: string, artist: string) => void;
 }
 
-export function ResultView({ analysis, onBack }: ResultViewProps) {
+export function ResultView({ analysis, onBack, onSuggestion }: ResultViewProps) {
   const { track, features, waveform, explanation, lyrics } = analysis;
   const player = usePlayer(track.preview);
   const [bloom, setBloom] = useState(false);
@@ -330,6 +331,63 @@ export function ResultView({ analysis, onBack }: ResultViewProps) {
           </motion.div>
         )}
       </div>
+
+      {explanation.suggestions && explanation.suggestions.length > 0 && (
+        <motion.section {...reveal(3)} style={{ marginTop: 80 }}>
+          <hr className="hairline" style={{ marginBottom: 28 }} />
+          <p className="mono-faint" style={{ marginBottom: 20 }}>
+            if this moved you · next
+          </p>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+              gap: 20,
+            }}
+          >
+            {explanation.suggestions.map((s, i) => (
+              <button
+                key={i}
+                onClick={() => onSuggestion(s.title, s.artist)}
+                title={`analyze ${s.title} by ${s.artist}`}
+                style={{
+                  textAlign: "left",
+                  padding: "18px 20px",
+                  border: "1px solid var(--line)",
+                  borderRadius: 4,
+                  background: "transparent",
+                  transition: "border-color 0.2s ease-out, background-color 0.2s ease-out",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.borderColor = "var(--accent)";
+                  e.currentTarget.style.backgroundColor = "#f3efe8";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.borderColor = "var(--line)";
+                  e.currentTarget.style.backgroundColor = "transparent";
+                }}
+              >
+                <p
+                  style={{
+                    fontFamily: "var(--serif)",
+                    fontSize: 18,
+                    lineHeight: 1.25,
+                    marginBottom: 2,
+                  }}
+                >
+                  {s.title}
+                </p>
+                <p className="mono-faint" style={{ marginBottom: 10 }}>
+                  {s.artist}
+                </p>
+                <p style={{ fontSize: 14, lineHeight: 1.55, color: "var(--ink-soft)" }}>
+                  {s.why}
+                </p>
+              </button>
+            ))}
+          </div>
+        </motion.section>
+      )}
     </div>
   );
 }

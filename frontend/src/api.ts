@@ -31,11 +31,18 @@ export interface Moment {
   basis: "measured" | "lyrics" | "inferred";
 }
 
+export interface Suggestion {
+  title: string;
+  artist: string;
+  why: string;
+}
+
 export interface Explanation {
   overall: string;
   moments: Moment[];
   lyric_read: string | null;
   headline: string;
+  suggestions?: Suggestion[];
 }
 
 export interface Analysis {

@@ -294,9 +294,17 @@ Return ONLY a JSON object, no prose around it, in this exact shape:
     }}
   ],
   "lyric_read": "a short paragraph on the lyric craft specifically, or null if instrumental",
-  "headline": "one sentence, under 15 words: the single sharpest insight about why this song works"
+  "headline": "one sentence, under 15 words: the single sharpest insight about why this song works",
+  "suggestions": [
+    {{
+      "title": "song title",
+      "artist": "artist name",
+      "why": "one line: the SPECIFIC craft link to THIS song — a shared mechanical move (a structural trick, a production choice, a lyric device), not 'same vibe/genre/artist'. Name the move."
+    }}
+  ]
 }}
 Aim for 3-5 moments. Quality over count — every moment must earn its place.
+Give exactly 3 suggestions. Each must share a CONCRETE, nameable craft element with this song and say which one in 'why' — reject anything you'd file under merely "similar". Pick reasonably well-known recordings so they can be found. Don't suggest the same song, and avoid leaning on the same artist.
 The response must be strictly valid JSON: escape every newline inside a string as \\n (no literal line breaks inside strings)."""
 
 
