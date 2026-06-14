@@ -1,0 +1,246 @@
+/* fermata — forensic editorial.
+   Constant structure: warm off-white canvas, ink text, muted greys.
+   The ONLY thing that changes per song is --accent (set from album art,
+   contrast-clamped in theme.ts). Keep it rare: peak, marker, playhead,
+   wordmark period, moment callout border. Nothing else. */
+
+:root {
+  --canvas: #faf8f5;
+  --ink: #16130f;
+  --ink-soft: #57514a;
+  --grey: #97907f;
+  --bar: #ddd7cb;
+  --bar-passed: #aaa294;
+  --line: #eae5db;
+  --accent: #d6273c; /* fallback signal red; replaced per song */
+
+  --serif: "Fraunces Variable", "Fraunces", georgia, serif;
+  --mono: "JetBrains Mono", ui-monospace, menlo, monospace;
+  --sans: "Inter Variable", "Inter", -apple-system, sans-serif;
+
+  --col: 680px;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--canvas);
+}
+
+body {
+  font-family: var(--sans);
+  font-size: 16px;
+  line-height: 1.7;
+  color: var(--ink);
+  background: var(--canvas);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: var(--accent);
+  color: var(--canvas);
+}
+
+:focus-visible {
+  outline: 1.5px solid var(--accent);
+  outline-offset: 3px;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+input {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+}
+
+input:focus {
+  outline: none;
+}
+
+input::placeholder {
+  color: var(--grey);
+}
+
+img {
+  display: block;
+}
+
+/* ------------------------------------------------- shared editorial bits */
+
+.col {
+  max-width: var(--col);
+  margin: 0 auto;
+  padding: 0 28px;
+}
+
+/* persistent top bar: canvas-colored, sticky; earns a whisper of shadow
+   once the page scrolls under it */
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background: var(--canvas);
+  transition: box-shadow 0.25s ease-out;
+}
+
+.topbar.scrolled {
+  box-shadow: 0 1px 0 var(--line), 0 8px 20px rgba(22, 19, 15, 0.06);
+}
+
+.topbar-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 18px;
+  padding-bottom: 14px;
+}
+
+/* the result page fills the window: fluid hero, then an editorial spread.
+   stacked < 1000px · read|rail < 1500px · read|moments|words beyond */
+.col-wide {
+  max-width: 1800px;
+  margin: 0 auto;
+  padding: 0 clamp(32px, 5vw, 110px);
+}
+
+.title-row {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+
+.meta-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.result-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+}
+
+.result-side,
+.result-words {
+  margin-top: 56px;
+}
+
+.lyrics-clamp {
+  max-height: 250px;
+  overflow: hidden;
+  border-bottom: 1px solid var(--line);
+}
+
+.lyrics-clamp.open {
+  max-height: none;
+  border-bottom: none;
+}
+
+@media (min-width: 1000px) {
+  .meta-stack {
+    align-items: flex-end;
+  }
+  .result-grid {
+    grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+    gap: clamp(56px, 5vw, 96px);
+    align-items: start;
+  }
+  .result-main {
+    grid-row: 1 / span 2;
+  }
+  .result-side,
+  .result-words {
+    margin-top: 0;
+    border-left: 1px solid var(--line);
+    padding-left: clamp(36px, 3vw, 56px);
+  }
+  .result-words {
+    grid-column: 2;
+    margin-top: 44px;
+  }
+}
+
+@media (min-width: 1500px) {
+  .result-grid {
+    grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr) minmax(0, 0.9fr);
+  }
+  .result-main {
+    grid-row: 1;
+  }
+  .result-words {
+    grid-column: 3;
+    grid-row: 1;
+    margin-top: 0;
+  }
+  /* in its own column the lyric sheet stands taller before clamping */
+  .lyrics-clamp {
+    max-height: min(58vh, 660px);
+  }
+}
+
+.mono {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  letter-spacing: 0.02em;
+  color: var(--ink-soft);
+}
+
+.mono-faint {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  letter-spacing: 0.02em;
+  color: var(--grey);
+}
+
+.chip {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  letter-spacing: 0.02em;
+  color: var(--ink-soft);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 5px 10px 4px;
+  white-space: nowrap;
+}
+
+.hairline {
+  border: none;
+  border-top: 1px solid var(--line);
+}
+
+@keyframes node-pop {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* respect prefers-reduced-motion for the few CSS-driven transitions;
+   Motion handles its own via MotionConfig reducedMotion="user" */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
