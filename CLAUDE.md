@@ -161,3 +161,28 @@ No gradients/mesh/glow/neon. No drop shadows on the album art or cards (flat, th
 5. Dynamic accent from album art — with the contrast clamp. Structure stays constant.
 6. The playhead + synced-lyrics playback is the centerpiece of "dynamic."
 7. Cache every analysis. Keep v1 stateless, single-song, free.
+
+---
+
+## PART 4 — WHAT'S BUILT & SHIPPED (post-v1, keep current)
+
+> Added after the original spec. Phases 0–3 are done and the app is **live at https://www.hearfermata.com**. This section is the source of truth for the deployed architecture and features beyond v1.
+
+### Deployed architecture
+- **Frontend:** Vercel, custom domain `www.hearfermata.com` (apex 308→www). Auto-deploys on push to `main`. Backend URL is hardcoded in `frontend/src/api.ts` for production (don't set `VITE_API_BASE` in Vercel — it overrides the hardcode).
+- **Backend:** Hugging Face Space (Docker, 16 GB) at `https://arjunsh6251-fermata.hf.space` (HF username is `arjunsh6251`). Render's 512 MB free tier OOM-killed librosa, so we moved to HF. Auto-deploys via `.github/workflows/hf-sync.yml`. Runtime secrets (`ANTHROPIC_API_KEY`, `ALLOWED_ORIGINS`, `FERMATA_MODEL=claude-opus-4-8`) live in the HF Space settings.
+- **Search is browser-side (Deezer JSONP):** Deezer blocks datacenter IPs (HF) and sends no CORS, so the browser queries Deezer via JSONP (residential IP, full catalog — iTunes search misses tracks like Frank Ocean's "Ivy"). The chosen track (incl. preview URL) is POSTed to `/api/analyze`; the backend only downloads the preview from Deezer's CDN (not IP-blocked). iTunes is the fallback when JSONP fails. SSRF guard: backend only fetches previews from deezer/apple hosts.
+- **Keep-warm:** `.github/workflows/keep-warm.yml` pings `/api/health` every 10 min (HF Spaces sleep ~48h idle).
+
+### Features beyond v1 (built, live)
+- **Song suggestions:** the analysis LLM call also returns `suggestions: [{title, artist, why}]` — 3 craft-linked songs, `why` names the shared mechanical move. Rendered as cards (with album art prefetched via Deezer) at the bottom of the result; clicking analyzes that song (discovery loop). Keep these CRAFT-specific, never "same vibe/genre/artist".
+- **Shareable moment cards:** "share the moment" exports a composed editorial poster PNG (`ShareCard`/`ShareModal`, via `html-to-image`) — album art, accent, waveform peak, the moment's `why_it_hits`. Pick which moment to feature. Native share on mobile. This is the growth/distribution surface.
+- **The craft map:** "explore the craft map" opens a force-directed graph (`CraftMap`, d3-force) — songs are nodes, edges are shared craft moves. Center = current song; click a node to reveal ITS links (cheap, cached `POST /api/suggest` — no audio/lyrics), growing the web; click "analyze" on a node to dive into its full read. The discovery loop made navigable.
+
+### Gotchas to remember
+- `max_tokens` for the analysis LLM call is 4096 — the suggestions made the JSON longer and 2048 truncated it (→ "unparseable explanation"). Don't lower it.
+- LLM model is `claude-opus-4-8` (claude-fable-5 is NOT available via the API). Suggestions reuse the same `call_llm`.
+- HF analysis cache (SQLite + audio) is on ephemeral disk — resets on every rebuild.
+
+### Next-step ideas (not built)
+"Your craft fingerprint" (analyze a playlist → the craft patterns a listener gravitates to, via the existing Spotify auth); conversational follow-up on a moment; full-song analysis via user upload (removes the 30s-clip caveat); creator mode ("how would I make something feel like this?").
