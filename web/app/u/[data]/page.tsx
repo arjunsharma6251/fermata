@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { ProfileView } from "@/components/ProfileView";
+import { loadMap } from "@/lib/kv";
 
 type Props = { params: Promise<{ data: string }> };
 
@@ -15,5 +16,7 @@ export const metadata: Metadata = {
 
 export default async function ProfilePage({ params }: Props) {
   const { data } = await params;
-  return <ProfileView data={data} />;
+  // a short id resolves to the stored payload; old long links pass through
+  const encoded = (await loadMap(data)) ?? data;
+  return <ProfileView data={encoded} />;
 }

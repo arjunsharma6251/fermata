@@ -94,6 +94,7 @@ export function CraftMap({ open, focusKey, onClose, onAnalyze, external }: Craft
   const [hover, setHover] = useState<string | null>(null);
   const [st, setSt] = useState(stats);
   const [shared, setShared] = useState(false);
+  const [sharing, setSharing] = useState(false);
   const render = useCallback(() => forceTick((t) => t + 1), []);
 
   // rebuild the node/link arrays from the persistent store, preserving the
@@ -363,16 +364,33 @@ export function CraftMap({ open, focusKey, onClose, onAnalyze, external }: Craft
             <div style={{ display: "flex", gap: 16, alignItems: "baseline" }}>
               {!external && st.explored > 0 && (
                 <button
-                  onClick={() => {
-                    const url = `${window.location.origin}/u/${encodeMap()}`;
-                    void navigator.clipboard?.writeText(url);
+                  disabled={sharing}
+                  onClick={async () => {
+                    setSharing(true);
+                    const data = encodeMap();
+                    let url = `${window.location.origin}/u/${data}`; // long fallback
+                    try {
+                      const res = await fetch("/api/map", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ data }),
+                      });
+                      if (res.ok) {
+                        const { id } = (await res.json()) as { id: string };
+                        url = `${window.location.origin}/u/${id}`;
+                      }
+                    } catch {
+                      /* keep the long fallback */
+                    }
+                    await navigator.clipboard?.writeText(url).catch(() => {});
+                    setSharing(false);
                     setShared(true);
                     window.setTimeout(() => setShared(false), 1800);
                   }}
                   className="mono"
                   style={{ textDecoration: "underline" }}
                 >
-                  {shared ? "link copied ✓" : "share my map ↗"}
+                  {sharing ? "creating link…" : shared ? "link copied ✓" : "share my map ↗"}
                 </button>
               )}
               {!external && st.explored > 1 && (

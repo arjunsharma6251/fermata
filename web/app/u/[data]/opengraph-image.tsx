@@ -1,5 +1,6 @@
 import { ImageResponse } from "next/og";
 import { decodeMap } from "@/lib/discovery";
+import { loadMap } from "@/lib/kv";
 
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
@@ -7,7 +8,8 @@ export const alt = "a craft map on fermata";
 
 export default async function Image({ params }: { params: Promise<{ data: string }> }) {
   const { data } = await params;
-  const { nodes } = decodeMap(data);
+  const encoded = (await loadMap(data)) ?? data;
+  const { nodes } = decodeMap(encoded);
   const explored = nodes.filter((n) => n.analyzed);
   const titles = explored.slice(0, 6).map((n) => n.title);
 
