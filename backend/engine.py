@@ -359,14 +359,22 @@ def parse_explanation(text: str) -> dict | None:
     if not m:
         return None
     blob = m.group(0)
-    try:
-        return json.loads(blob)
-    except json.JSONDecodeError:
+    # try increasingly lenient parses: strict, then allow literal control
+    # chars in strings (the #1 LLM malformation), then a newline-escape repair
+    attempts = (
+        lambda: json.loads(blob),
+        lambda: json.loads(blob, strict=False),
+        lambda: json.loads(
+            re.sub(r'(?<=[^"{\[,:\s])\n(?=\s*[^"\s])', r"\\n", blob.replace("\r", "")),
+            strict=False,
+        ),
+    )
+    for attempt in attempts:
         try:
-            return json.loads(re.sub(r'(?<=[^"{\[,:\s])\n(?=\s*[^"\s])', r"\\n",
-                                     blob.replace("\r", "")))
+            return attempt()
         except json.JSONDecodeError:
-            return None
+            continue
+    return None
 
 
 # ------------------------------------------------------------ craft-map nodes
@@ -402,8 +410,15 @@ def analyze_track(track: dict) -> dict:
     with _FEATURE_LOCK:
         features = extract_features(mp3)
 
-    raw = call_llm(build_prompt(track["artist"], track["title"], features, lyrics))
-    explanation = parse_explanation(raw)
+    # Opus occasionally emits slightly-malformed JSON (an unescaped quote in a
+    # lyric, a stray control char). A fresh generation almost always parses, so
+    # retry rather than failing the user.
+    prompt = build_prompt(track["artist"], track["title"], features, lyrics)
+    explanation = None
+    for _ in range(3):
+        explanation = parse_explanation(call_llm(prompt))
+        if explanation is not None:
+            break
     if explanation is None:
         raise RuntimeError("LLM returned unparseable explanation")
 
