@@ -300,7 +300,7 @@ export function ResultView({ analysis, onBack, onSuggestion, onOpenMap }: Result
                 </button>
                 <button
                   onClick={() => {
-                    const url = `${window.location.origin}/song/${toSongSlug(track.title, track.artist)}`;
+                    const url = `${window.location.origin}/song/${toSongSlug(track.title, track.artist, track.cover)}`;
                     void navigator.clipboard?.writeText(url);
                     setLinkCopied(true);
                     window.setTimeout(() => setLinkCopied(false), 1800);
