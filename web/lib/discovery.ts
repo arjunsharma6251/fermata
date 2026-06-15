@@ -137,3 +137,56 @@ export function clearDiscovery() {
   localStorage.removeItem(STORAGE_KEY);
   notify();
 }
+
+// ---------------------------------------------------------- shareable maps
+// Pack the graph into a URL-safe string so a discovery map can be shared at
+// /u/<data> — no database needed.
+
+function b64urlEncode(s: string): string {
+  const bytes = new TextEncoder().encode(s);
+  let bin = "";
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+function b64urlDecode(s: string): string {
+  const bin = atob(s.replace(/-/g, "+").replace(/_/g, "/"));
+  return new TextDecoder().decode(Uint8Array.from(bin, (c) => c.charCodeAt(0)));
+}
+
+const SHARE_CAP = 40; // bound the URL length
+
+export function encodeMap(): string {
+  const { nodes, links } = getGraph();
+  const kept = nodes.slice(0, SHARE_CAP);
+  const ids = new Set(kept.map((n) => n.key));
+  const payload = {
+    s: kept.map((n) => [n.key, n.title, n.artist, n.analyzed ? 1 : 0, n.accent ?? ""]),
+    l: links.filter((l) => ids.has(l.from) && ids.has(l.to)).map((l) => [l.from, l.to, l.why]),
+  };
+  return b64urlEncode(JSON.stringify(payload));
+}
+
+export function decodeMap(data: string): { nodes: DiscoveryNode[]; links: DiscoveryLink[] } {
+  try {
+    const p = JSON.parse(b64urlDecode(decodeURIComponent(data))) as {
+      s: [string, string, string, number, string][];
+      l: [string, string, string][];
+    };
+    const nodes: DiscoveryNode[] = p.s.map(([key, title, artist, analyzed, accent]) => ({
+      key,
+      title,
+      artist,
+      cover: null,
+      analyzed: analyzed === 1,
+      accent: accent || null,
+      analyzedAt: null,
+    }));
+    const ids = new Set(nodes.map((n) => n.key));
+    const links: DiscoveryLink[] = p.l
+      .filter(([f, t]) => ids.has(f) && ids.has(t))
+      .map(([from, to, why]) => ({ from, to, why }));
+    return { nodes, links };
+  } catch {
+    return { nodes: [], links: [] };
+  }
+}

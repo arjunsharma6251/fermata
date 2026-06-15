@@ -361,6 +361,14 @@ export default function Home({ autoQuery }: { autoQuery?: string } = {}) {
                 or open your craft map · {discStats.explored} explored ◈
               </button>
             )}
+            <div style={{ display: "flex", gap: 18, marginTop: 26 }}>
+              <a href="/daily" className="mono-faint" style={{ textDecoration: "underline" }}>
+                song of the day
+              </a>
+              <a href="/tours" className="mono-faint" style={{ textDecoration: "underline" }}>
+                craft tours
+              </a>
+            </div>
           </motion.div>
         )}
 

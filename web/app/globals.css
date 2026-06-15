@@ -244,3 +244,18 @@ img {
     animation-iteration-count: 1 !important;
   }
 }
+
+/* tour / editorial song cards */
+.song-link-card:hover {
+  border-color: var(--accent) !important;
+  background-color: #f3efe8;
+}
+.editorial-link {
+  color: var(--ink);
+  text-decoration: none;
+  border-bottom: 1px solid var(--line);
+  transition: border-color 0.2s ease-out;
+}
+.editorial-link:hover {
+  border-color: var(--accent);
+}

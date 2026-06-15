@@ -22,7 +22,15 @@ import {
 } from "d3-force";
 import type { Track } from "@/lib/api";
 import { fetchSuggestions, searchTracks } from "@/lib/api";
-import { clearDiscovery, getGraph, recordLinks, setCover, stats, subscribe } from "@/lib/discovery";
+import {
+  clearDiscovery,
+  encodeMap,
+  getGraph,
+  recordLinks,
+  setCover,
+  stats,
+  subscribe,
+} from "@/lib/discovery";
 
 interface MapNode {
   key: string;
@@ -54,9 +62,19 @@ interface CraftMapProps {
   focusKey: string | null;
   onClose: () => void;
   onAnalyze: (title: string, artist: string, prefetched?: Track) => void;
+  // when set, render this shared graph read-only (a public profile) instead
+  // of the viewer's own localStorage map
+  external?: { nodes: ExternalNode[]; links: { from: string; to: string; why: string }[] } | null;
+}
+interface ExternalNode {
+  key: string;
+  title: string;
+  artist: string;
+  analyzed: boolean;
+  accent: string | null;
 }
 
-export function CraftMap({ open, focusKey, onClose, onAnalyze }: CraftMapProps) {
+export function CraftMap({ open, focusKey, onClose, onAnalyze, external }: CraftMapProps) {
   const nodesRef = useRef<Map<string, MapNode>>(new Map());
   const linksRef = useRef<MapLink[]>([]);
   const simRef = useRef<Simulation<MapNode, MapLink> | null>(null);
@@ -75,12 +93,15 @@ export function CraftMap({ open, focusKey, onClose, onAnalyze }: CraftMapProps) 
   const [, forceTick] = useState(0);
   const [hover, setHover] = useState<string | null>(null);
   const [st, setSt] = useState(stats);
+  const [shared, setShared] = useState(false);
   const render = useCallback(() => forceTick((t) => t + 1), []);
 
   // rebuild the node/link arrays from the persistent store, preserving the
   // positions of nodes that are already on screen
   const derive = useCallback(() => {
-    const { nodes, links } = getGraph();
+    const { nodes, links } = external
+      ? { nodes: external.nodes.map((n) => ({ ...n, cover: null, analyzedAt: null })), links: external.links }
+      : getGraph();
     const outgoing = new Set(links.map((l) => l.from));
     const seen = new Set<string>();
     const byKey = nodesRef.current;
@@ -142,12 +163,12 @@ export function CraftMap({ open, focusKey, onClose, onAnalyze }: CraftMapProps) 
       sim.alpha(0.8).restart();
     }
     render();
-  }, [focusKey, render]);
+  }, [focusKey, render, external]);
 
   // expand a node (cheap suggest) — grows the persistent graph
   const expand = useCallback(
     async (node: MapNode) => {
-      if (node.expanded || node.loading) return;
+      if (external || node.expanded || node.loading) return; // read-only profiles don't grow
       node.loading = true;
       render();
       try {
@@ -186,17 +207,19 @@ export function CraftMap({ open, focusKey, onClose, onAnalyze }: CraftMapProps) 
     simRef.current = sim;
 
     derive();
-    setSt(stats());
-    const unsub = subscribe(() => {
-      derive();
-      setSt(stats());
-    });
+    setSt(external ? externalStats(external) : stats());
+    const unsub = external
+      ? () => {}
+      : subscribe(() => {
+          derive();
+          setSt(stats());
+        });
     return () => {
       sim.stop();
       simRef.current = null;
       unsub();
     };
-  }, [open, derive, render]);
+  }, [open, derive, render, external]);
 
   // lazily fetch covers (+ analyzable track) for nodes that lack art
   useEffect(() => {
@@ -281,7 +304,10 @@ export function CraftMap({ open, focusKey, onClose, onAnalyze }: CraftMapProps) 
     const d = dragRef.current;
     dragRef.current = null;
     simRef.current?.alphaTarget(0);
-    if (d?.mode === "node" && d.node && !d.moved) void expand(d.node);
+    if (d?.mode === "node" && d.node && !d.moved) {
+      if (external) onAnalyze(d.node.title, d.node.artist, d.node.track ?? undefined);
+      else void expand(d.node);
+    }
   }
 
   const nodes = [...nodesRef.current.values()];
@@ -326,15 +352,30 @@ export function CraftMap({ open, focusKey, onClose, onAnalyze }: CraftMapProps) 
                   letterSpacing: "-0.015em",
                 }}
               >
-                your craft map<span style={{ color: "var(--accent)" }}>.</span>
+                {external ? "a craft map" : "your craft map"}
+                <span style={{ color: "var(--accent)" }}>.</span>
               </span>
               <p className="mono-faint" style={{ marginTop: 4 }}>
                 {st.explored} explored · {st.frontier} to discover · {st.links} links ·{" "}
-                drag to move · scroll to zoom
+                {external ? "click a song to analyze it" : "drag to move · scroll to zoom"}
               </p>
             </div>
             <div style={{ display: "flex", gap: 16, alignItems: "baseline" }}>
-              {st.explored > 1 && (
+              {!external && st.explored > 0 && (
+                <button
+                  onClick={() => {
+                    const url = `${window.location.origin}/u/${encodeMap()}`;
+                    void navigator.clipboard?.writeText(url);
+                    setShared(true);
+                    window.setTimeout(() => setShared(false), 1800);
+                  }}
+                  className="mono"
+                  style={{ textDecoration: "underline" }}
+                >
+                  {shared ? "link copied ✓" : "share my map ↗"}
+                </button>
+              )}
+              {!external && st.explored > 1 && (
                 <button
                   onClick={() => {
                     if (confirm("Clear your whole discovery map?")) clearDiscovery();
@@ -499,4 +540,8 @@ export function CraftMap({ open, focusKey, onClose, onAnalyze }: CraftMapProps) 
       )}
     </AnimatePresence>
   );
+}
+function externalStats(ext: { nodes: { analyzed: boolean }[]; links: unknown[] }) {
+  const explored = ext.nodes.filter((n) => n.analyzed).length;
+  return { explored, frontier: ext.nodes.length - explored, links: ext.links.length };
 }
