@@ -24,11 +24,17 @@ import {
   spotifyEnabled,
 } from "@/lib/spotify";
 
+// a shared-moment link's payload: which moment to surface after analysis
+export interface EntryMoment {
+  stamp: string;
+  label: string;
+}
+
 type Phase =
   | { name: "idle" }
   | { name: "results"; tracks: Track[] }
   | { name: "analyzing"; track: Track }
-  | { name: "result"; analysis: Analysis; tracks: Track[] }
+  | { name: "result"; analysis: Analysis; tracks: Track[]; entryMoment?: EntryMoment }
   | { name: "playlists"; playlists: SpotifyPlaylist[] }
   | { name: "playlistTracks"; playlist: SpotifyPlaylist; tracks: SpotifyTrack[] };
 
@@ -48,7 +54,10 @@ function Wordmark({ size }: { size: number }) {
   );
 }
 
-export default function Home({ autoQuery }: { autoQuery?: string } = {}) {
+export default function Home({
+  autoQuery,
+  autoMoment,
+}: { autoQuery?: string; autoMoment?: EntryMoment } = {}) {
   const [phase, setPhase] = useState<Phase>({ name: "idle" });
   const [query, setQuery] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -86,7 +95,7 @@ export default function Home({ autoQuery }: { autoQuery?: string } = {}) {
   );
 
   const onPick = useCallback(
-    async (track: Track) => {
+    async (track: Track, entryMoment?: EntryMoment) => {
       setError(null);
       setPhase({ name: "analyzing", track });
       // extract + clamp the song's color while the analysis runs
@@ -106,7 +115,7 @@ export default function Home({ autoQuery }: { autoQuery?: string } = {}) {
           analysis.explanation.suggestions ?? []
         );
         setPhase((p) =>
-          p.name === "analyzing" ? { name: "result", analysis, tracks: [] } : p
+          p.name === "analyzing" ? { name: "result", analysis, tracks: [], entryMoment } : p
         );
       } catch (err) {
         setAccent(FALLBACK_ACCENT);
@@ -129,7 +138,7 @@ export default function Home({ autoQuery }: { autoQuery?: string } = {}) {
         const tracks = await searchTracks(autoQuery);
         if (tracks.length > 0) {
           setLastTracks(tracks);
-          await onPick(tracks[0]);
+          await onPick(tracks[0], autoMoment);
         } else {
           setError(`couldn't find "${autoQuery}" — try the search box`);
         }
@@ -137,7 +146,7 @@ export default function Home({ autoQuery }: { autoQuery?: string } = {}) {
         setError("search failed — couldn't reach the backend");
       }
     })();
-  }, [autoQuery, onPick]);
+  }, [autoQuery, autoMoment, onPick]);
 
   // reset accent when leaving a song
   useEffect(() => {
@@ -578,6 +587,7 @@ export default function Home({ autoQuery }: { autoQuery?: string } = {}) {
           >
             <ResultView
               analysis={phase.analysis}
+              initialMoment={phase.entryMoment ?? null}
               onBack={backToResults}
               onSuggestion={analyzeSuggestion}
               onOpenMap={(key) => {

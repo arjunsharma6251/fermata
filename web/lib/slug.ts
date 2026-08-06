@@ -38,11 +38,88 @@ export function toSongSlug(title: string, artist: string, cover: string | null =
   return `${readable(title, artist)}~${b64urlEncode(JSON.stringify(data))}`;
 }
 
+// Moment slugs (/m/<slug>) additionally carry one annotated moment — its
+// stamp, label, and a why_it_hits excerpt — plus the song's clamped accent,
+// so the OG card can quote the moment in the song's own color without any
+// server-side lookup (the analysis cache is ephemeral and slow to miss).
+interface MomentData extends SongData {
+  ts: string; // moment timestamp string, e.g. "clip 0:14" or "2:18"
+  mo: string; // moment label
+  w: string; // why_it_hits excerpt
+  x?: string; // clamped accent hex
+}
+
+const WHY_MAX = 180;
+
+function excerpt(s: string): string {
+  if (s.length <= WHY_MAX) return s;
+  const cut = s.slice(0, WHY_MAX);
+  return `${cut.slice(0, Math.max(cut.lastIndexOf(" "), WHY_MAX - 20))}…`;
+}
+
+export function toMomentSlug(
+  title: string,
+  artist: string,
+  cover: string | null,
+  moment: { timestamp: string; moment: string; why_it_hits: string },
+  accent?: string
+): string {
+  const data: MomentData = {
+    t: title,
+    a: artist,
+    c: cover,
+    ts: moment.timestamp,
+    mo: moment.moment,
+    w: excerpt(moment.why_it_hits),
+    ...(accent ? { x: accent } : {}),
+  };
+  return `${readable(title, artist)}~${b64urlEncode(JSON.stringify(data))}`;
+}
+
 export interface ParsedSlug {
   query: string; // for Deezer search on the page
   title: string | null;
   artist: string | null;
   cover: string | null;
+}
+
+export interface ParsedMomentSlug extends ParsedSlug {
+  stamp: string | null;
+  label: string | null;
+  why: string | null;
+  accent: string | null;
+}
+
+export function parseMomentSlug(slug: string): ParsedMomentSlug {
+  const decoded = decodeURIComponent(slug);
+  const [pretty, encoded] = decoded.split("~");
+  const out: ParsedMomentSlug = {
+    query: pretty.replace(/-/g, " ").trim(),
+    title: null,
+    artist: null,
+    cover: null,
+    stamp: null,
+    label: null,
+    why: null,
+    accent: null,
+  };
+  if (encoded) {
+    try {
+      const d = JSON.parse(b64urlDecode(encoded)) as MomentData;
+      out.title = d.t ?? null;
+      out.artist = d.a ?? null;
+      out.cover = d.c ?? null;
+      out.stamp = d.ts ?? null;
+      out.label = d.mo ?? null;
+      out.why = d.w ?? null;
+      // never let slug data inject styles — accept a strict hex color only
+      out.accent = d.x && /^#[0-9a-fA-F]{6}$/.test(d.x) ? d.x : null;
+    } catch {
+      /* malformed — fall back to the readable part */
+    }
+  }
+  if (out.title && out.artist) out.query = `${out.title} ${out.artist}`;
+  return out;
 }
 
 export function parseSongSlug(slug: string): ParsedSlug {

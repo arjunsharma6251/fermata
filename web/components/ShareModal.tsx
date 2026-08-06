@@ -7,6 +7,7 @@ import { useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { toPng } from "html-to-image";
 import type { Analysis } from "@/lib/api";
+import { toMomentSlug } from "@/lib/slug";
 import { ShareCard } from "./ShareCard";
 
 interface ShareModalProps {
@@ -19,6 +20,7 @@ export function ShareModal({ analysis, open, onClose }: ShareModalProps) {
   const cardRef = useRef<HTMLDivElement>(null);
   const [momentIdx, setMomentIdx] = useState(0);
   const [busy, setBusy] = useState(false);
+  const [linkCopied, setLinkCopied] = useState(false);
 
   const moments = analysis.explanation.moments;
   const moment = moments[momentIdx] ?? moments[0];
@@ -77,6 +79,24 @@ export function ShareModal({ analysis, open, onClose }: ShareModalProps) {
   }
 
   const canShare = typeof navigator !== "undefined" && !!navigator.canShare;
+
+  // a link that opens the song parked on this exact moment (/m/<slug>),
+  // carrying the accent so its OG card wears the song's color
+  function onCopyLink() {
+    const accent = getComputedStyle(document.documentElement)
+      .getPropertyValue("--accent")
+      .trim();
+    const url = `${window.location.origin}/m/${toMomentSlug(
+      analysis.track.title,
+      analysis.track.artist,
+      analysis.track.cover,
+      moment,
+      /^#[0-9a-fA-F]{6}$/.test(accent) ? accent : undefined
+    )}`;
+    void navigator.clipboard?.writeText(url);
+    setLinkCopied(true);
+    window.setTimeout(() => setLinkCopied(false), 1800);
+  }
 
   return (
     <AnimatePresence>
@@ -165,6 +185,9 @@ export function ShareModal({ analysis, open, onClose }: ShareModalProps) {
               )}
               <button onClick={() => void onDownload()} disabled={busy} style={actionStyle(false)}>
                 {busy ? "rendering…" : "download png"}
+              </button>
+              <button onClick={onCopyLink} style={actionStyle(false)}>
+                {linkCopied ? "copied ✓" : "copy moment link"}
               </button>
               <button onClick={onClose} style={actionStyle(false)}>
                 close

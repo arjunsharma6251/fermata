@@ -11,19 +11,30 @@ export interface Player {
   seek: (seconds: number) => void;
 }
 
-export function usePlayer(src: string | null): Player {
+export function usePlayer(src: string | null, initialSeek?: number | null): Player {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const rafRef = useRef(0);
   const [playing, setPlaying] = useState(false);
   const [time, setTime] = useState(0);
   const [duration, setDuration] = useState(30);
+  // shared-moment entry: park the playhead on the moment once metadata is in
+  // (seeking before loadedmetadata is unreliable). Applied once, not on remount.
+  const initialSeekRef = useRef(initialSeek ?? null);
 
   useEffect(() => {
     if (!src) return;
     const audio = new Audio(src);
     audio.preload = "auto";
     audioRef.current = audio;
-    const onMeta = () => setDuration(audio.duration || 30);
+    const onMeta = () => {
+      setDuration(audio.duration || 30);
+      const s = initialSeekRef.current;
+      if (s !== null) {
+        initialSeekRef.current = null;
+        audio.currentTime = Math.max(0, Math.min(s, audio.duration || 30));
+        setTime(audio.currentTime);
+      }
+    };
     const onEnd = () => {
       setPlaying(false);
       setTime(0);

@@ -14,18 +14,26 @@ import { formatTime, nearestLineIndex, parseClipStamp, parseLrc, parseSongStamp 
 import { Waveform, type ClipAnnotation } from "./Waveform";
 import { ShareModal } from "./ShareModal";
 import { songKey } from "@/lib/discovery";
-import { toSongSlug } from "@/lib/slug";
+import { toMomentSlug, toSongSlug } from "@/lib/slug";
 
 const BLOOM_AT_MS = 1500; // after the 96-bar draw-in settles
 
 interface ResultViewProps {
   analysis: Analysis;
+  /** set when the page was entered through a shared /m/ moment link */
+  initialMoment?: { stamp: string; label: string } | null;
   onBack: () => void;
   onSuggestion: (title: string, artist: string, prefetched?: Track) => void;
   onOpenMap: (focusKey: string) => void;
 }
 
-export function ResultView({ analysis, onBack, onSuggestion, onOpenMap }: ResultViewProps) {
+export function ResultView({
+  analysis,
+  initialMoment,
+  onBack,
+  onSuggestion,
+  onOpenMap,
+}: ResultViewProps) {
   const { track, features, waveform, explanation, lyrics } = analysis;
 
   // prefetch the top match for each suggestion — gives its album art for the
@@ -52,13 +60,31 @@ export function ResultView({ analysis, onBack, onSuggestion, onOpenMap }: Result
       cancelled = true;
     };
   }, [explanation.suggestions]);
-  const player = usePlayer(track.preview);
+  // shared-moment entry: park the playhead on the moment's clip time. The
+  // stamp from the URL is used directly, so this works even if a fresh
+  // analysis returned slightly different moments than the sharer saw.
+  const player = usePlayer(
+    track.preview,
+    initialMoment ? parseClipStamp(initialMoment.stamp) : null
+  );
   const [bloom, setBloom] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
+  const [momentCopied, setMomentCopied] = useState<number | null>(null);
   const [lyricsOpen, setLyricsOpen] = useState(false);
   const [litLine, setLitLine] = useState<number | null>(null);
   const lineRefs = useRef<(HTMLParagraphElement | null)[]>([]);
+
+  // match the shared moment against this analysis — by exact stamp first,
+  // then by label (the cache is ephemeral, so a re-analysis may differ)
+  const sharedIdx = useMemo(() => {
+    if (!initialMoment) return -1;
+    const byStamp = explanation.moments.findIndex((m) => m.timestamp === initialMoment.stamp);
+    if (byStamp >= 0) return byStamp;
+    return explanation.moments.findIndex(
+      (m) => m.moment.trim().toLowerCase() === initialMoment.label.trim().toLowerCase()
+    );
+  }, [initialMoment, explanation.moments]);
 
   useEffect(() => {
     const id = setTimeout(() => setBloom(true), BLOOM_AT_MS);
@@ -116,9 +142,49 @@ export function ResultView({ analysis, onBack, onSuggestion, onOpenMap }: Result
     return { seconds, label: near && near.d <= 3 ? near.a.label : measuredLabel };
   }, [clipAnnotations, waveform, features]);
 
+  // a shared moment takes the callout — it's what the link promised
   const calloutMoment: Moment =
+    (sharedIdx >= 0 ? explanation.moments[sharedIdx] : undefined) ??
     explanation.moments.find((m) => parseClipStamp(m.timestamp) !== null) ??
     explanation.moments[0];
+
+  // shared lyric-timestamped moments can't drive the clip playhead — locate
+  // the line in the lyric column instead, once the reveal has laid it out
+  useEffect(() => {
+    if (!initialMoment || parseClipStamp(initialMoment.stamp) !== null) return;
+    const songS = parseSongStamp(initialMoment.stamp);
+    if (songS === null || !lyrics.synced) return;
+    const idx = nearestLineIndex(
+      lyricLines.filter((l) => l.time >= 0),
+      songS
+    );
+    if (idx === null) return;
+    const id = setTimeout(() => {
+      setLyricsOpen(true);
+      setLitLine(idx);
+      requestAnimationFrame(() =>
+        lineRefs.current[idx]?.scrollIntoView({ behavior: "smooth", block: "center" })
+      );
+    }, BLOOM_AT_MS + 1200);
+    return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialMoment]);
+
+  function copyMomentLink(m: Moment, idx: number) {
+    const accent = getComputedStyle(document.documentElement)
+      .getPropertyValue("--accent")
+      .trim();
+    const url = `${window.location.origin}/m/${toMomentSlug(
+      track.title,
+      track.artist,
+      track.cover,
+      m,
+      /^#[0-9a-fA-F]{6}$/.test(accent) ? accent : undefined
+    )}`;
+    void navigator.clipboard?.writeText(url);
+    setMomentCopied(idx);
+    window.setTimeout(() => setMomentCopied((c) => (c === idx ? null : c)), 1800);
+  }
 
   function onStampClick(m: Moment) {
     const clipS = parseClipStamp(m.timestamp);
@@ -340,7 +406,10 @@ export function ResultView({ analysis, onBack, onSuggestion, onOpenMap }: Result
                 gridTemplateColumns: "78px 1fr",
                 gap: 14,
                 padding: "14px 0",
+                paddingLeft: i === sharedIdx ? 12 : 0,
                 borderTop: "1px solid var(--line)",
+                borderLeft:
+                  i === sharedIdx ? "2px solid var(--accent)" : "2px solid transparent",
               }}
             >
               <button
@@ -356,11 +425,29 @@ export function ResultView({ analysis, onBack, onSuggestion, onOpenMap }: Result
                 {m.timestamp}
               </button>
               <div>
-                <p style={{ fontWeight: 600, fontSize: 14.5, marginBottom: 3 }}>
-                  {m.moment}{" "}
-                  <span className="mono-faint" style={{ fontWeight: 400, marginLeft: 6 }}>
+                <p
+                  style={{
+                    fontWeight: 600,
+                    fontSize: 14.5,
+                    marginBottom: 3,
+                    display: "flex",
+                    alignItems: "baseline",
+                    gap: 6,
+                  }}
+                >
+                  {m.moment}
+                  <span className="mono-faint" style={{ fontWeight: 400 }}>
                     {m.basis}
+                    {i === sharedIdx ? " · shared with you" : ""}
                   </span>
+                  <button
+                    className="mono-faint"
+                    onClick={() => copyMomentLink(m, i)}
+                    title="copy a link that opens the song on this moment"
+                    style={{ marginLeft: "auto", fontWeight: 400 }}
+                  >
+                    {momentCopied === i ? "copied ✓" : "link ⎘"}
+                  </button>
                 </p>
                 <p style={{ fontSize: 14, lineHeight: 1.6, color: "var(--ink-soft)" }}>
                   {m.what_happens}
