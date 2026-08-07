@@ -14,6 +14,7 @@ import { formatTime, nearestLineIndex, parseClipStamp, parseLrc, parseSongStamp 
 import { Waveform, type ClipAnnotation } from "./Waveform";
 import { ShareModal } from "./ShareModal";
 import { songKey } from "@/lib/discovery";
+import { tagShareUrl, track as trackEvent } from "@/lib/analytics";
 import { toMomentSlug, toSongSlug } from "@/lib/slug";
 
 const BLOOM_AT_MS = 1500; // after the 96-bar draw-in settles
@@ -181,7 +182,14 @@ export function ResultView({
       m,
       /^#[0-9a-fA-F]{6}$/.test(accent) ? accent : undefined
     )}`;
-    void navigator.clipboard?.writeText(url);
+    void navigator.clipboard?.writeText(tagShareUrl(url, "moment_link"));
+    trackEvent("share_card_generated", {
+      kind: "moment_link",
+      surface: "rail",
+      moment: m.moment,
+      title: track.title,
+      artist: track.artist,
+    });
     setMomentCopied(idx);
     window.setTimeout(() => setMomentCopied((c) => (c === idx ? null : c)), 1800);
   }
@@ -367,7 +375,13 @@ export function ResultView({
                 <button
                   onClick={() => {
                     const url = `${window.location.origin}/song/${toSongSlug(track.title, track.artist, track.cover)}`;
-                    void navigator.clipboard?.writeText(url);
+                    void navigator.clipboard?.writeText(tagShareUrl(url, "song_link"));
+                    trackEvent("share_card_generated", {
+                      kind: "song_link",
+                      surface: "callout",
+                      title: track.title,
+                      artist: track.artist,
+                    });
                     setLinkCopied(true);
                     window.setTimeout(() => setLinkCopied(false), 1800);
                   }}

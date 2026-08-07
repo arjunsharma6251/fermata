@@ -7,8 +7,10 @@ import { useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { toPng } from "html-to-image";
 import type { Analysis } from "@/lib/api";
+import { tagShareUrl, track } from "@/lib/analytics";
 import { toMomentSlug } from "@/lib/slug";
 import { ShareCard } from "./ShareCard";
+import { StoryCard } from "./StoryCard";
 
 interface ShareModalProps {
   analysis: Analysis;
@@ -21,12 +23,21 @@ export function ShareModal({ analysis, open, onClose }: ShareModalProps) {
   const [momentIdx, setMomentIdx] = useState(0);
   const [busy, setBusy] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
+  // post = 4:5 feed poster; story = 9:16 full-bleed (IG/Snap stories)
+  const [format, setFormat] = useState<"post" | "story">("post");
 
   const moments = analysis.explanation.moments;
   const moment = moments[momentIdx] ?? moments[0];
-  const fileName = `fermata-${analysis.track.title}`
+  const fileName = `fermata-${analysis.track.title}${format === "story" ? "-story" : ""}`
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-");
+
+  // preview scale per format: the story card is tall, so it shrinks more;
+  // export always captures the full-size node at 2x
+  const dims =
+    format === "story"
+      ? { w: 540, h: 960, scale: 0.56 }
+      : { w: 540, h: 680, scale: 0.82 };
 
   async function render(): Promise<Blob | null> {
     if (!cardRef.current) return null;
@@ -51,6 +62,13 @@ export function ShareModal({ analysis, open, onClose }: ShareModalProps) {
       a.download = `${fileName}.png`;
       a.click();
       URL.revokeObjectURL(url);
+      track("share_card_generated", {
+        kind: "png_download",
+        format,
+        moment: moment.moment,
+        title: analysis.track.title,
+        artist: analysis.track.artist,
+      });
     } finally {
       setBusy(false);
     }
@@ -67,6 +85,13 @@ export function ShareModal({ analysis, open, onClose }: ShareModalProps) {
           files: [file],
           title: `${analysis.track.title} — fermata`,
           text: moment.why_it_hits,
+        });
+        track("share_card_generated", {
+          kind: "png_share",
+          format,
+          moment: moment.moment,
+          title: analysis.track.title,
+          artist: analysis.track.artist,
         });
       } else {
         await onDownload();
@@ -93,7 +118,14 @@ export function ShareModal({ analysis, open, onClose }: ShareModalProps) {
       moment,
       /^#[0-9a-fA-F]{6}$/.test(accent) ? accent : undefined
     )}`;
-    void navigator.clipboard?.writeText(url);
+    void navigator.clipboard?.writeText(tagShareUrl(url, "moment_link"));
+    track("share_card_generated", {
+      kind: "moment_link",
+      surface: "modal",
+      moment: moment.moment,
+      title: analysis.track.title,
+      artist: analysis.track.artist,
+    });
     setLinkCopied(true);
     window.setTimeout(() => setLinkCopied(false), 1800);
   }
@@ -127,16 +159,43 @@ export function ShareModal({ analysis, open, onClose }: ShareModalProps) {
             onClick={(e) => e.stopPropagation()}
             style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 18 }}
           >
+            {/* format toggle */}
+            <div style={{ display: "flex", gap: 8 }}>
+              {(["post", "story"] as const).map((f) => (
+                <button
+                  key={f}
+                  onClick={() => setFormat(f)}
+                  className="mono"
+                  style={{
+                    fontSize: 11,
+                    padding: "5px 12px",
+                    borderRadius: 3,
+                    border: `1px solid ${f === format ? "var(--accent)" : "rgba(250,248,245,0.4)"}`,
+                    color: f === format ? "var(--accent)" : "var(--canvas)",
+                    background: f === format ? "var(--canvas)" : "transparent",
+                  }}
+                >
+                  {f === "post" ? "post · 4:5" : "story · 9:16"}
+                </button>
+              ))}
+            </div>
+
             {/* the card, scaled to fit; captured at full size */}
             <div
               style={{
-                transform: "scale(var(--card-scale, 0.82))",
-                transformOrigin: "top center",
+                width: dims.w * dims.scale,
+                height: dims.h * dims.scale,
                 boxShadow: "0 24px 60px rgba(22,19,15,0.28)",
                 borderRadius: 2,
               }}
             >
-              <ShareCard ref={cardRef} analysis={analysis} moment={moment} />
+              <div style={{ transform: `scale(${dims.scale})`, transformOrigin: "top left" }}>
+                {format === "story" ? (
+                  <StoryCard ref={cardRef} analysis={analysis} moment={moment} />
+                ) : (
+                  <ShareCard ref={cardRef} analysis={analysis} moment={moment} />
+                )}
+              </div>
             </div>
 
             {/* moment selector */}
@@ -148,7 +207,6 @@ export function ShareModal({ analysis, open, onClose }: ShareModalProps) {
                   flexWrap: "wrap",
                   justifyContent: "center",
                   maxWidth: 460,
-                  marginTop: -80,
                 }}
               >
                 {moments.map((m, i) => (

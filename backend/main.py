@@ -100,6 +100,21 @@ async def analyze(track_in: TrackIn):
         # FRESH track metadata the client just supplied
         return {**cached, "track": track, "cached": True}
 
+    seeded = cache.get_seed(key)
+    if seeded is not None:
+        # bundled analyses ship without lyrics (the Space repo is public) —
+        # fetch them now, then persist to the runtime cache so the next hit
+        # skips this too
+        lyr = await run_in_threadpool(
+            engine.fetch_lyrics, track["artist"], track["title"], track["duration"]
+        )
+        seeded["lyrics"] = {
+            "plain": lyr.get("plainLyrics") if lyr else None,
+            "synced": lyr.get("syncedLyrics") if lyr else None,
+        }
+        cache.put(key, seeded)
+        return {**seeded, "track": track, "cached": True}
+
     try:
         result = await run_in_threadpool(engine.analyze_track, track)
     except Exception as e:

@@ -9,6 +9,7 @@ import { AnimatePresence, MotionConfig, motion } from "motion/react";
 import type { Analysis, Track } from "@/lib/api";
 import { analyzeTrack, searchTracks } from "@/lib/api";
 import { FALLBACK_ACCENT, extractAccent, setAccent } from "@/lib/theme";
+import { isFirstAnalysis, track as trackEvent, trackVisit, utmProps } from "@/lib/analytics";
 import { recordAnalysis, songKey, stats, subscribe } from "@/lib/discovery";
 import { Analyzing } from "@/components/Analyzing";
 import { ResultView } from "@/components/ResultView";
@@ -70,6 +71,20 @@ export default function Home({
 
   useEffect(() => subscribe(() => setDiscStats(stats())), []);
 
+  // entry funnel: every landing tagged with how they arrived; shared-link
+  // entries also count as an inbound share click, carrying any utm_* params
+  const trackedEntry = useRef(false);
+  useEffect(() => {
+    if (trackedEntry.current) return;
+    trackedEntry.current = true;
+    const entry = autoMoment ? "moment_link" : autoQuery ? "song_link" : "home";
+    trackVisit();
+    trackEvent("landing_view", { entry, ...utmProps() });
+    if (autoQuery) {
+      trackEvent("share_card_clicked", { kind: entry, query: autoQuery, ...utmProps() });
+    }
+  }, [autoQuery, autoMoment]);
+
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 8);
     window.addEventListener("scroll", onScroll, { passive: true });
@@ -98,10 +113,20 @@ export default function Home({
     async (track: Track, entryMoment?: EntryMoment) => {
       setError(null);
       setPhase({ name: "analyzing", track });
+      if (isFirstAnalysis()) {
+        trackEvent("first_analysis_run", { title: track.title, artist: track.artist });
+      }
+      const startedAt = Date.now();
       // extract + clamp the song's color while the analysis runs
       const accentPromise = extractAccent(track.cover);
       try {
         const [analysis, accent] = await Promise.all([analyzeTrack(track), accentPromise]);
+        trackEvent("analysis_completed", {
+          title: analysis.track.title,
+          artist: analysis.track.artist,
+          cached: analysis.cached,
+          ms: Date.now() - startedAt,
+        });
         setAccent(accent);
         // grow the persistent discovery map
         recordAnalysis(
@@ -118,6 +143,11 @@ export default function Home({
           p.name === "analyzing" ? { name: "result", analysis, tracks: [], entryMoment } : p
         );
       } catch (err) {
+        trackEvent("analysis_failed", {
+          title: track.title,
+          artist: track.artist,
+          error: err instanceof Error ? err.message : "unknown",
+        });
         setAccent(FALLBACK_ACCENT);
         setError(err instanceof Error ? err.message : "analysis failed");
         // land back on the results list so another version is one click away
