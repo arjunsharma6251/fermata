@@ -1,5 +1,6 @@
 import { ImageResponse } from "next/og";
 import { parseMomentSlug } from "@/lib/slug";
+import { OgStars } from "@/lib/OgStars";
 
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
@@ -94,6 +95,24 @@ export default async function Image({ params }: { params: Promise<{ slug: string
           >
             “{why}”
           </div>
+          {p.stars ? (
+            <div style={{ display: "flex", alignItems: "center", gap: 16, marginTop: 22 }}>
+              <OgStars stars={p.stars} size={30} accent={ACCENT} />
+              {p.take && (
+                <div
+                  style={{
+                    fontSize: 26,
+                    fontStyle: "italic",
+                    color: GREY,
+                    display: "flex",
+                    maxWidth: 760,
+                  }}
+                >
+                  “{p.take.slice(0, 80)}”
+                </div>
+              )}
+            </div>
+          ) : null}
         </div>
 
         {/* waveform motif, accent blooming at the moment */}

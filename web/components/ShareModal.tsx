@@ -8,23 +8,25 @@ import { AnimatePresence, motion } from "motion/react";
 import { toPng } from "html-to-image";
 import type { Analysis } from "@/lib/api";
 import { tagShareUrl, track } from "@/lib/analytics";
-import { toMomentSlug } from "@/lib/slug";
+import { toMomentSlug, type SlugVerdict } from "@/lib/slug";
 import { ShareCard } from "./ShareCard";
 import { StoryCard } from "./StoryCard";
 
 interface ShareModalProps {
   analysis: Analysis;
+  verdict?: SlugVerdict | null;
   open: boolean;
   onClose: () => void;
 }
 
-export function ShareModal({ analysis, open, onClose }: ShareModalProps) {
+export function ShareModal({ analysis, verdict, open, onClose }: ShareModalProps) {
   const cardRef = useRef<HTMLDivElement>(null);
   const [momentIdx, setMomentIdx] = useState(0);
   const [busy, setBusy] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
   // post = 4:5 feed poster; story = 9:16 full-bleed (IG/Snap stories)
   const [format, setFormat] = useState<"post" | "story">("post");
+  const [storyLinkReady, setStoryLinkReady] = useState(false);
 
   const moments = analysis.explanation.moments;
   const moment = moments[momentIdx] ?? moments[0];
@@ -53,6 +55,10 @@ export function ShareModal({ analysis, open, onClose }: ShareModalProps) {
 
   async function onDownload() {
     setBusy(true);
+    if (format === "story") {
+      void navigator.clipboard?.writeText(momentUrl());
+      setStoryLinkReady(true);
+    }
     try {
       const blob = await render();
       if (!blob) return;
@@ -68,6 +74,7 @@ export function ShareModal({ analysis, open, onClose }: ShareModalProps) {
         moment: moment.moment,
         title: analysis.track.title,
         artist: analysis.track.artist,
+        rated: !!verdict,
       });
     } finally {
       setBusy(false);
@@ -76,6 +83,10 @@ export function ShareModal({ analysis, open, onClose }: ShareModalProps) {
 
   async function onShare() {
     setBusy(true);
+    if (format === "story") {
+      void navigator.clipboard?.writeText(momentUrl());
+      setStoryLinkReady(true);
+    }
     try {
       const blob = await render();
       if (!blob) return;
@@ -92,6 +103,7 @@ export function ShareModal({ analysis, open, onClose }: ShareModalProps) {
           moment: moment.moment,
           title: analysis.track.title,
           artist: analysis.track.artist,
+          rated: !!verdict,
         });
       } else {
         await onDownload();
@@ -106,8 +118,8 @@ export function ShareModal({ analysis, open, onClose }: ShareModalProps) {
   const canShare = typeof navigator !== "undefined" && !!navigator.canShare;
 
   // a link that opens the song parked on this exact moment (/m/<slug>),
-  // carrying the accent so its OG card wears the song's color
-  function onCopyLink() {
+  // carrying the accent + your verdict so the OG card shows both
+  function momentUrl(): string {
     const accent = getComputedStyle(document.documentElement)
       .getPropertyValue("--accent")
       .trim();
@@ -116,15 +128,21 @@ export function ShareModal({ analysis, open, onClose }: ShareModalProps) {
       analysis.track.artist,
       analysis.track.cover,
       moment,
-      /^#[0-9a-fA-F]{6}$/.test(accent) ? accent : undefined
+      /^#[0-9a-fA-F]{6}$/.test(accent) ? accent : undefined,
+      verdict
     )}`;
-    void navigator.clipboard?.writeText(tagShareUrl(url, "moment_link"));
+    return tagShareUrl(url, "moment_link");
+  }
+
+  function onCopyLink() {
+    void navigator.clipboard?.writeText(momentUrl());
     track("share_card_generated", {
       kind: "moment_link",
       surface: "modal",
       moment: moment.moment,
       title: analysis.track.title,
       artist: analysis.track.artist,
+      rated: !!verdict,
     });
     setLinkCopied(true);
     window.setTimeout(() => setLinkCopied(false), 1800);
@@ -191,9 +209,9 @@ export function ShareModal({ analysis, open, onClose }: ShareModalProps) {
             >
               <div style={{ transform: `scale(${dims.scale})`, transformOrigin: "top left" }}>
                 {format === "story" ? (
-                  <StoryCard ref={cardRef} analysis={analysis} moment={moment} />
+                  <StoryCard ref={cardRef} analysis={analysis} moment={moment} verdict={verdict} />
                 ) : (
-                  <ShareCard ref={cardRef} analysis={analysis} moment={moment} />
+                  <ShareCard ref={cardRef} analysis={analysis} moment={moment} verdict={verdict} />
                 )}
               </div>
             </div>
@@ -251,6 +269,25 @@ export function ShareModal({ analysis, open, onClose }: ShareModalProps) {
                 close
               </button>
             </div>
+
+            {/* IG can't be handed a link programmatically — the sticker is
+                the one legal path, so we make it a single paste */}
+            {format === "story" && (
+              <p
+                className="mono"
+                style={{
+                  fontSize: 11.5,
+                  letterSpacing: "0.03em",
+                  color: "rgba(250,248,245,0.75)",
+                  textAlign: "center",
+                  maxWidth: 420,
+                }}
+              >
+                {storyLinkReady
+                  ? "moment link copied ✓ — in instagram, paste it into a link sticker"
+                  : "share or download copies your moment link — paste it into instagram's link sticker"}
+              </p>
+            )}
           </motion.div>
         </motion.div>
       )}

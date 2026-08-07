@@ -15,14 +15,21 @@ import { Waveform, type ClipAnnotation } from "./Waveform";
 import { ShareModal } from "./ShareModal";
 import { songKey } from "@/lib/discovery";
 import { tagShareUrl, track as trackEvent } from "@/lib/analytics";
-import { toMomentSlug, toSongSlug } from "@/lib/slug";
+import { toMomentSlug, toSongSlug, type SlugVerdict } from "@/lib/slug";
+import { TAKE_MAX, clearVerdict, getVerdict, setVerdict, starsText } from "@/lib/ratings";
+import { StarsInput } from "./Stars";
 
 const BLOOM_AT_MS = 1500; // after the 96-bar draw-in settles
 
 interface ResultViewProps {
   analysis: Analysis;
   /** set when the page was entered through a shared /m/ moment link */
-  initialMoment?: { stamp: string; label: string } | null;
+  initialMoment?: {
+    stamp: string;
+    label: string;
+    stars?: number | null;
+    take?: string | null;
+  } | null;
   onBack: () => void;
   onSuggestion: (title: string, artist: string, prefetched?: Track) => void;
   onOpenMap: (focusKey: string) => void;
@@ -75,6 +82,26 @@ export function ResultView({
   const [lyricsOpen, setLyricsOpen] = useState(false);
   const [litLine, setLitLine] = useState<number | null>(null);
   const lineRefs = useRef<(HTMLParagraphElement | null)[]>([]);
+
+  // your verdict — local, per song; rides inside every share artifact
+  const verdictKey = songKey(track.title, track.artist);
+  const [stars, setStars] = useState(0);
+  const [take, setTake] = useState("");
+  useEffect(() => {
+    const v = getVerdict(verdictKey);
+    setStars(v?.stars ?? 0);
+    setTake(v?.take ?? "");
+  }, [verdictKey]);
+  const verdict: SlugVerdict | null = stars > 0 ? { stars, take } : null;
+
+  function rate(s: number) {
+    setStars(s);
+    setVerdict(verdictKey, s, take);
+  }
+  function saveTake(t: string) {
+    setTake(t);
+    if (stars > 0) setVerdict(verdictKey, stars, t);
+  }
 
   // match the shared moment against this analysis — by exact stamp first,
   // then by label (the cache is ephemeral, so a re-analysis may differ)
@@ -180,7 +207,8 @@ export function ResultView({
       track.artist,
       track.cover,
       m,
-      /^#[0-9a-fA-F]{6}$/.test(accent) ? accent : undefined
+      /^#[0-9a-fA-F]{6}$/.test(accent) ? accent : undefined,
+      verdict
     )}`;
     void navigator.clipboard?.writeText(tagShareUrl(url, "moment_link"));
     trackEvent("share_card_generated", {
@@ -189,6 +217,7 @@ export function ResultView({
       moment: m.moment,
       title: track.title,
       artist: track.artist,
+      rated: !!verdict,
     });
     setMomentCopied(idx);
     window.setTimeout(() => setMomentCopied((c) => (c === idx ? null : c)), 1800);
@@ -362,6 +391,29 @@ export function ResultView({
               <p style={{ fontFamily: "var(--serif)", fontSize: 18.5, lineHeight: 1.5 }}>
                 {calloutMoment.why_it_hits}
               </p>
+              {initialMoment?.stars ? (
+                <p style={{ marginTop: 12, fontSize: 14.5, lineHeight: 1.55 }}>
+                  <span style={{ color: "var(--accent)", letterSpacing: 1 }}>
+                    {starsText(initialMoment.stars)}
+                  </span>
+                  <span className="mono-faint" style={{ marginLeft: 8 }}>
+                    the sharer&apos;s verdict
+                  </span>
+                  {initialMoment.take && (
+                    <span
+                      style={{
+                        display: "block",
+                        fontFamily: "var(--serif)",
+                        fontStyle: "italic",
+                        color: "var(--ink-soft)",
+                        marginTop: 3,
+                      }}
+                    >
+                      “{initialMoment.take}”
+                    </span>
+                  )}
+                </p>
+              ) : null}
               <div style={{ display: "flex", gap: 10, marginTop: 14, flexWrap: "wrap" }}>
                 <button
                   onClick={() => setShareOpen(true)}
@@ -374,13 +426,14 @@ export function ResultView({
                 </button>
                 <button
                   onClick={() => {
-                    const url = `${window.location.origin}/song/${toSongSlug(track.title, track.artist, track.cover)}`;
+                    const url = `${window.location.origin}/song/${toSongSlug(track.title, track.artist, track.cover, verdict)}`;
                     void navigator.clipboard?.writeText(tagShareUrl(url, "song_link"));
                     trackEvent("share_card_generated", {
                       kind: "song_link",
                       surface: "callout",
                       title: track.title,
                       artist: track.artist,
+                      rated: !!verdict,
                     });
                     setLinkCopied(true);
                     window.setTimeout(() => setLinkCopied(false), 1800);
@@ -395,6 +448,47 @@ export function ResultView({
               </div>
             </aside>
           )}
+
+          {/* your verdict — rides inside every link and card you share */}
+          <div style={{ marginTop: 36 }}>
+            <p className="mono-faint" style={{ marginBottom: 10 }}>
+              your verdict
+            </p>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <StarsInput value={stars} onChange={rate} />
+              {stars > 0 && (
+                <button
+                  className="mono-faint"
+                  onClick={() => {
+                    clearVerdict(verdictKey);
+                    setStars(0);
+                    setTake("");
+                  }}
+                  title="clear your verdict"
+                >
+                  ×
+                </button>
+              )}
+            </div>
+            {stars > 0 && (
+              <input
+                value={take}
+                onChange={(e) => saveTake(e.target.value)}
+                maxLength={TAKE_MAX}
+                placeholder="add a one-line take — it travels with your shares"
+                aria-label="your one-line take"
+                style={{
+                  marginTop: 12,
+                  width: "min(420px, 100%)",
+                  fontSize: 15,
+                  fontFamily: "var(--serif)",
+                  fontStyle: take ? "normal" : "italic",
+                  paddingBottom: 5,
+                  borderBottom: "1px solid var(--line)",
+                }}
+              />
+            )}
+          </div>
 
           {explanation.lyric_read && (
             <div style={{ marginTop: 44 }}>
@@ -625,7 +719,12 @@ export function ResultView({
         </motion.section>
       )}
 
-      <ShareModal analysis={analysis} open={shareOpen} onClose={() => setShareOpen(false)} />
+      <ShareModal
+        analysis={analysis}
+        verdict={verdict}
+        open={shareOpen}
+        onClose={() => setShareOpen(false)}
+      />
     </div>
   );
 }

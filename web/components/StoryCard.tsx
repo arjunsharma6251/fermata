@@ -8,10 +8,13 @@
 
 import { forwardRef } from "react";
 import type { Analysis, Moment } from "@/lib/api";
+import { starsText } from "@/lib/ratings";
+import type { SlugVerdict } from "@/lib/slug";
 
 interface StoryCardProps {
   analysis: Analysis;
   moment: Moment;
+  verdict?: SlugVerdict | null;
 }
 
 const CARD_W = 540;
@@ -23,7 +26,7 @@ function shape(v: number): number {
 }
 
 export const StoryCard = forwardRef<HTMLDivElement, StoryCardProps>(
-  ({ analysis, moment }, ref) => {
+  ({ analysis, moment, verdict }, ref) => {
     const { track, features, waveform } = analysis;
 
     const step = waveform.length / BARS;
@@ -188,6 +191,25 @@ export const StoryCard = forwardRef<HTMLDivElement, StoryCardProps>(
           >
             {moment.why_it_hits}
           </div>
+          {verdict && (
+            <div style={{ marginTop: 14, fontSize: 15, lineHeight: 1.45 }}>
+              <span style={{ color: "var(--accent)", letterSpacing: 2, fontSize: 17 }}>
+                {starsText(verdict.stars)}
+              </span>
+              {verdict.take.trim() && (
+                <span
+                  style={{
+                    fontFamily: "var(--serif)",
+                    fontStyle: "italic",
+                    color: "var(--ink-soft)",
+                    marginLeft: 10,
+                  }}
+                >
+                  “{verdict.take.trim().slice(0, 90)}”
+                </span>
+              )}
+            </div>
+          )}
         </div>
 
         {/* footer */}

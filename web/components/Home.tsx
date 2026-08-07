@@ -25,10 +25,13 @@ import {
   spotifyEnabled,
 } from "@/lib/spotify";
 
-// a shared-moment link's payload: which moment to surface after analysis
+// a shared-moment link's payload: which moment to surface after analysis,
+// plus the sharer's verdict if the link carries one
 export interface EntryMoment {
   stamp: string;
   label: string;
+  stars?: number | null;
+  take?: string | null;
 }
 
 type Phase =

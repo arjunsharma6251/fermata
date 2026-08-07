@@ -8,6 +8,29 @@ interface SongData {
   t: string; // title
   a: string; // artist
   c: string | null; // cover URL
+  r?: number; // sharer's rating, 0.5–5 half steps
+  k?: string; // sharer's one-line take
+}
+
+export interface SlugVerdict {
+  stars: number;
+  take: string;
+}
+
+const TAKE_SLUG_MAX = 140;
+
+function verdictFields(v?: SlugVerdict | null): { r?: number; k?: string } {
+  if (!v || !v.stars) return {};
+  const out: { r?: number; k?: string } = { r: v.stars };
+  if (v.take.trim()) out.k = v.take.trim().slice(0, TAKE_SLUG_MAX);
+  return out;
+}
+
+function parseVerdict(d: { r?: unknown; k?: unknown }): { stars: number | null; take: string | null } {
+  const raw = typeof d.r === "number" ? d.r : NaN;
+  // only accept the exact shape we mint: half steps within 0.5–5
+  const stars = raw >= 0.5 && raw <= 5 && (raw * 2) % 1 === 0 ? raw : null;
+  return { stars, take: stars && typeof d.k === "string" ? d.k.slice(0, TAKE_SLUG_MAX) : null };
 }
 
 function readable(title: string, artist: string): string {
@@ -33,8 +56,13 @@ function b64urlDecode(s: string): string {
   return new TextDecoder().decode(Uint8Array.from(bin, (c) => c.charCodeAt(0)));
 }
 
-export function toSongSlug(title: string, artist: string, cover: string | null = null): string {
-  const data: SongData = { t: title, a: artist, c: cover };
+export function toSongSlug(
+  title: string,
+  artist: string,
+  cover: string | null = null,
+  verdict?: SlugVerdict | null
+): string {
+  const data: SongData = { t: title, a: artist, c: cover, ...verdictFields(verdict) };
   return `${readable(title, artist)}~${b64urlEncode(JSON.stringify(data))}`;
 }
 
@@ -62,7 +90,8 @@ export function toMomentSlug(
   artist: string,
   cover: string | null,
   moment: { timestamp: string; moment: string; why_it_hits: string },
-  accent?: string
+  accent?: string,
+  verdict?: SlugVerdict | null
 ): string {
   const data: MomentData = {
     t: title,
@@ -72,6 +101,7 @@ export function toMomentSlug(
     mo: moment.moment,
     w: excerpt(moment.why_it_hits),
     ...(accent ? { x: accent } : {}),
+    ...verdictFields(verdict),
   };
   return `${readable(title, artist)}~${b64urlEncode(JSON.stringify(data))}`;
 }
@@ -81,6 +111,8 @@ export interface ParsedSlug {
   title: string | null;
   artist: string | null;
   cover: string | null;
+  stars: number | null; // sharer's verdict, if the link carries one
+  take: string | null;
 }
 
 export interface ParsedMomentSlug extends ParsedSlug {
@@ -98,6 +130,8 @@ export function parseMomentSlug(slug: string): ParsedMomentSlug {
     title: null,
     artist: null,
     cover: null,
+    stars: null,
+    take: null,
     stamp: null,
     label: null,
     why: null,
@@ -114,6 +148,7 @@ export function parseMomentSlug(slug: string): ParsedMomentSlug {
       out.why = d.w ?? null;
       // never let slug data inject styles — accept a strict hex color only
       out.accent = d.x && /^#[0-9a-fA-F]{6}$/.test(d.x) ? d.x : null;
+      ({ stars: out.stars, take: out.take } = parseVerdict(d));
     } catch {
       /* malformed — fall back to the readable part */
     }
@@ -128,16 +163,19 @@ export function parseSongSlug(slug: string): ParsedSlug {
   let title: string | null = null;
   let artist: string | null = null;
   let cover: string | null = null;
+  let stars: number | null = null;
+  let take: string | null = null;
   if (encoded) {
     try {
       const d = JSON.parse(b64urlDecode(encoded)) as SongData;
       title = d.t ?? null;
       artist = d.a ?? null;
       cover = d.c ?? null;
+      ({ stars, take } = parseVerdict(d));
     } catch {
       /* malformed — fall back to the readable part */
     }
   }
   const query = title && artist ? `${title} ${artist}` : pretty.replace(/-/g, " ").trim();
-  return { query, title, artist, cover };
+  return { query, title, artist, cover, stars, take };
 }

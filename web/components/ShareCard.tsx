@@ -7,10 +7,13 @@
 import { forwardRef } from "react";
 import type { Analysis, Moment } from "@/lib/api";
 import { formatTime } from "@/lib/lrc";
+import { starsText } from "@/lib/ratings";
+import type { SlugVerdict } from "@/lib/slug";
 
 interface ShareCardProps {
   analysis: Analysis;
   moment: Moment;
+  verdict?: SlugVerdict | null;
 }
 
 const CARD_W = 540;
@@ -22,7 +25,7 @@ function shape(v: number): number {
 }
 
 export const ShareCard = forwardRef<HTMLDivElement, ShareCardProps>(
-  ({ analysis, moment }, ref) => {
+  ({ analysis, moment, verdict }, ref) => {
     const { track, features, waveform } = analysis;
 
     // downsample the 96-bar waveform to BARS and find the peak
@@ -151,6 +154,25 @@ export const ShareCard = forwardRef<HTMLDivElement, ShareCardProps>(
           <div style={{ fontFamily: "var(--serif)", fontSize: 23, lineHeight: 1.42 }}>
             {moment.why_it_hits}
           </div>
+          {verdict && (
+            <div style={{ marginTop: 12, fontSize: 14, lineHeight: 1.45 }}>
+              <span style={{ color: "var(--accent)", letterSpacing: 2, fontSize: 16 }}>
+                {starsText(verdict.stars)}
+              </span>
+              {verdict.take.trim() && (
+                <span
+                  style={{
+                    fontFamily: "var(--serif)",
+                    fontStyle: "italic",
+                    color: "var(--ink-soft)",
+                    marginLeft: 10,
+                  }}
+                >
+                  “{verdict.take.trim().slice(0, 90)}”
+                </span>
+              )}
+            </div>
+          )}
         </div>
 
         {/* footer */}

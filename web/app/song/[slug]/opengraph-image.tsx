@@ -1,5 +1,6 @@
 import { ImageResponse } from "next/og";
 import { parseSongSlug } from "@/lib/slug";
+import { OgStars } from "@/lib/OgStars";
 
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
@@ -85,6 +86,24 @@ export default async function Image({ params }: { params: Promise<{ slug: string
                 {artist}
               </div>
             )}
+            {parsed.stars ? (
+              <div style={{ display: "flex", alignItems: "center", gap: 14, marginTop: 18 }}>
+                <OgStars stars={parsed.stars} size={28} accent={ACCENT} />
+                {parsed.take && (
+                  <div
+                    style={{
+                      fontSize: 24,
+                      fontStyle: "italic",
+                      color: GREY,
+                      display: "flex",
+                      maxWidth: 560,
+                    }}
+                  >
+                    “{parsed.take.slice(0, 60)}”
+                  </div>
+                )}
+              </div>
+            ) : null}
           </div>
         </div>
 

@@ -8,17 +8,24 @@ function titleCase(s: string): string {
   return s.replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+function starsText(stars: number | null): string {
+  if (!stars) return "";
+  return "★".repeat(Math.floor(stars)) + (stars % 1 >= 0.5 ? "½" : "");
+}
+
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params;
-  const { title, artist, query, stamp, why } = parseMomentSlug(slug);
+  const { title, artist, query, stamp, why, stars } = parseMomentSlug(slug);
   const name = title && artist ? `${title} — ${artist}` : titleCase(query);
   const at = stamp ? ` at ${stamp}` : "";
+  const desc = why ?? `The exact moment “${name}” gets you — and why, read by fermata.`;
+  const rated = stars ? `${starsText(stars)} · ${desc}` : desc;
   return {
     title: `the moment${at} · ${name}`,
-    description: why ?? `The exact moment “${name}” gets you — and why, read by fermata.`,
+    description: rated,
     openGraph: {
       title: `the moment${at} · ${name}`,
-      description: why ?? `The exact moment “${name}” gets you — and why.`,
+      description: rated,
     },
     twitter: { card: "summary_large_image" },
   };
@@ -26,11 +33,11 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 export default async function MomentPage({ params }: Props) {
   const { slug } = await params;
-  const { query, stamp, label } = parseMomentSlug(slug);
+  const { query, stamp, label, stars, take } = parseMomentSlug(slug);
   return (
     <Home
       autoQuery={query}
-      autoMoment={stamp && label ? { stamp, label } : undefined}
+      autoMoment={stamp && label ? { stamp, label, stars, take } : undefined}
     />
   );
 }
