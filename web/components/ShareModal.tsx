@@ -3,9 +3,10 @@
 // Overlay that previews the share card, lets you pick which moment to
 // feature, and exports it as a crisp PNG (or native share on mobile).
 
-import { useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { toPng } from "html-to-image";
+import { fetchCoverDataUrl } from "@/lib/api";
 import type { Analysis } from "@/lib/api";
 import { tagShareUrl, track } from "@/lib/analytics";
 import { toMomentSlug, type SlugVerdict } from "@/lib/slug";
@@ -28,6 +29,26 @@ export function ShareModal({ analysis, verdict, open, onClose }: ShareModalProps
   const [format, setFormat] = useState<"post" | "story">("post");
   const [storyLinkReady, setStoryLinkReady] = useState(false);
 
+  // inline the cover before export — see fetchCoverDataUrl for why
+  const [coverData, setCoverData] = useState<string | null>(null);
+  useEffect(() => {
+    if (!open || !analysis.track.cover || coverData) return;
+    let cancelled = false;
+    void fetchCoverDataUrl(analysis.track.cover).then((d) => {
+      if (!cancelled) setCoverData(d);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, analysis.track.cover, coverData]);
+  const cardAnalysis = useMemo(
+    () =>
+      coverData
+        ? { ...analysis, track: { ...analysis.track, cover: coverData } }
+        : analysis,
+    [analysis, coverData]
+  );
+
   const moments = analysis.explanation.moments;
   const moment = moments[momentIdx] ?? moments[0];
   const fileName = `fermata-${analysis.track.title}${format === "story" ? "-story" : ""}`
@@ -46,7 +67,8 @@ export function ShareModal({ analysis, verdict, open, onClose }: ShareModalProps
     await document.fonts.ready;
     const dataUrl = await toPng(cardRef.current, {
       pixelRatio: 2,
-      cacheBust: true,
+      // NO cacheBust: it appends a query param on re-fetch, which invalidates
+      // Deezer's signed cover URLs and blanks the art in the export
       backgroundColor: "#faf8f5",
     });
     const res = await fetch(dataUrl);
@@ -209,9 +231,9 @@ export function ShareModal({ analysis, verdict, open, onClose }: ShareModalProps
             >
               <div style={{ transform: `scale(${dims.scale})`, transformOrigin: "top left" }}>
                 {format === "story" ? (
-                  <StoryCard ref={cardRef} analysis={analysis} moment={moment} verdict={verdict} />
+                  <StoryCard ref={cardRef} analysis={cardAnalysis} moment={moment} verdict={verdict} />
                 ) : (
-                  <ShareCard ref={cardRef} analysis={analysis} moment={moment} verdict={verdict} />
+                  <ShareCard ref={cardRef} analysis={cardAnalysis} moment={moment} verdict={verdict} />
                 )}
               </div>
             </div>

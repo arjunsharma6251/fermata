@@ -95,6 +95,34 @@ export async function fetchSuggestions(title: string, artist: string): Promise<S
   return body.suggestions;
 }
 
+/** Album art as a data URI for share-card export. html-to-image re-fetches
+ *  <img> sources, which fails on signed Deezer URLs (extra params break the
+ *  signature) and CORS-less mzstatic — so the card gets inlined bytes.
+ *  Direct CORS fetch first, backend proxy as fallback, null if both fail. */
+export async function fetchCoverDataUrl(cover: string): Promise<string | null> {
+  async function toDataUrl(res: globalThis.Response): Promise<string> {
+    if (!res.ok) throw new Error(String(res.status));
+    const blob = await res.blob();
+    return new Promise((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = () => resolve(r.result as string);
+      r.onerror = reject;
+      r.readAsDataURL(blob);
+    });
+  }
+  try {
+    return await toDataUrl(await fetch(cover, { mode: "cors" }));
+  } catch {
+    try {
+      return await toDataUrl(
+        await fetch(`${API_BASE}/api/cover?url=${encodeURIComponent(cover)}`)
+      );
+    } catch {
+      return null;
+    }
+  }
+}
+
 export async function analyzeTrack(track: Track): Promise<Analysis> {
   // POST the full track (incl. its preview URL) so the backend never needs
   // to reach Deezer's API itself — it just downloads the preview + analyzes.

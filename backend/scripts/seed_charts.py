@@ -42,7 +42,9 @@ def chart_songs() -> list[tuple[str, str]]:
     hot = requests.get(HOT100_URL, timeout=30).json()["data"]
     songs += [(e["song"], e["artist"]) for e in hot]
 
-    html = requests.get(KWORB_URL, timeout=30).text
+    kworb = requests.get(KWORB_URL, timeout=30)
+    kworb.encoding = "utf-8"  # kworb omits the charset header; requests guesses latin-1 → mojibake artists
+    html = kworb.text
     rows = re.findall(
         r'<td class="text mp"><div><a href="\.\./artist/[^"]*">([^<]+)</a> - '
         r'<a href="\.\./track/[^"]*">([^<]+)</a>',

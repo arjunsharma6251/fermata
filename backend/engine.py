@@ -159,6 +159,16 @@ def is_allowed_preview(url: str) -> bool:
     )
 
 
+def fetch_cover(url: str) -> tuple[bytes, str]:
+    """Fetch album art for the share-card proxy. Same host allowlist as
+    previews (dzcdn/deezer/mzstatic/apple) — never a general fetcher."""
+    if not is_allowed_preview(url):
+        raise ValueError("cover URL not from an allowed source")
+    r = requests.get(url, headers={"User-Agent": USER_AGENT}, timeout=20)
+    r.raise_for_status()
+    return r.content, r.headers.get("Content-Type", "image/jpeg")
+
+
 def download_preview(url: str, key: str) -> Path:
     AUDIO_CACHE.mkdir(parents=True, exist_ok=True)
     # Deezer serves mp3, iTunes serves m4a/aac — keep the real extension so

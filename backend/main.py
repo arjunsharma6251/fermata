@@ -8,6 +8,7 @@ import os
 from fastapi import FastAPI, HTTPException
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response
 from pydantic import BaseModel
 
 import cache
@@ -85,6 +86,24 @@ async def suggest(s: SuggestIn):
         raise HTTPException(502, f"suggest failed: {e}")
     cache.put_suggest(key, result)
     return {"suggestions": result, "cached": False}
+
+
+@app.get("/api/cover")
+async def cover(url: str):
+    # share-card export needs the album art as same-origin bytes: signed
+    # Deezer URLs reject extra params and mzstatic sends no CORS, either of
+    # which blanks the art in the exported PNG
+    try:
+        content, media_type = await run_in_threadpool(engine.fetch_cover, url)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        raise HTTPException(502, f"cover fetch failed: {e}")
+    return Response(
+        content=content,
+        media_type=media_type,
+        headers={"Cache-Control": "public, max-age=86400"},
+    )
 
 
 @app.post("/api/analyze")
