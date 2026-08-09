@@ -35,6 +35,14 @@ export const ShareCard = forwardRef<HTMLDivElement, ShareCardProps>(
     );
     const peak = bars.indexOf(Math.max(...bars));
 
+    // fixed-height card, flexShrink:0 everywhere — scale the quote to the
+    // text load instead of letting flex silently crush the waveform
+    const take = verdict?.take.trim() ?? "";
+    const quoteLoad = moment.why_it_hits.length + (take ? 50 : 0) + (verdict ? 20 : 0);
+    const quoteSize =
+      quoteLoad > 300 ? 16 : quoteLoad > 240 ? 17.5 : quoteLoad > 190 ? 19 : quoteLoad > 150 ? 20.5 : 23;
+    const titleSize = track.title.length > 48 ? 24 : track.title.length > 30 ? 28 : 32;
+
     return (
       <div
         ref={ref}
@@ -52,7 +60,7 @@ export const ShareCard = forwardRef<HTMLDivElement, ShareCardProps>(
         }}
       >
         {/* header */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", flexShrink: 0 }}>
           <span
             style={{
               fontFamily: "var(--serif)",
@@ -77,7 +85,7 @@ export const ShareCard = forwardRef<HTMLDivElement, ShareCardProps>(
         </div>
 
         {/* title block */}
-        <div style={{ display: "flex", gap: 18, alignItems: "center", marginTop: 40 }}>
+        <div style={{ display: "flex", gap: 18, alignItems: "center", marginTop: 40, flexShrink: 0 }}>
           {track.cover && (
             <img
               src={track.cover}
@@ -93,7 +101,7 @@ export const ShareCard = forwardRef<HTMLDivElement, ShareCardProps>(
               style={{
                 fontFamily: "var(--serif)",
                 fontWeight: 600,
-                fontSize: 32,
+                fontSize: titleSize,
                 lineHeight: 1.08,
                 letterSpacing: "-0.01em",
               }}
@@ -123,6 +131,7 @@ export const ShareCard = forwardRef<HTMLDivElement, ShareCardProps>(
             gap: 2,
             height: 88,
             marginTop: 40,
+            flexShrink: 0,
           }}
         >
           {bars.map((h, i) => (
@@ -139,7 +148,7 @@ export const ShareCard = forwardRef<HTMLDivElement, ShareCardProps>(
         </div>
 
         {/* the moment */}
-        <div style={{ borderLeft: "2px solid var(--accent)", paddingLeft: 18, marginTop: 44 }}>
+        <div style={{ borderLeft: "2px solid var(--accent)", paddingLeft: 18, marginTop: 40, flexShrink: 0 }}>
           <div
             style={{
               fontFamily: "var(--mono)",
@@ -151,12 +160,20 @@ export const ShareCard = forwardRef<HTMLDivElement, ShareCardProps>(
           >
             {moment.moment} · {moment.timestamp}
           </div>
-          <div style={{ fontFamily: "var(--serif)", fontSize: 23, lineHeight: 1.42 }}>
+          <div style={{ fontFamily: "var(--serif)", fontSize: quoteSize, lineHeight: 1.42 }}>
             {moment.why_it_hits}
           </div>
           {verdict && (
-            <div style={{ marginTop: 12, fontSize: 14, lineHeight: 1.45 }}>
-              <span style={{ color: "var(--accent)", letterSpacing: 2, fontSize: 16 }}>
+            <div style={{ marginTop: 14, lineHeight: 1.45 }}>
+              <span
+                style={{
+                  color: "var(--accent)",
+                  letterSpacing: 2.5,
+                  fontSize: 18,
+                  lineHeight: 1,
+                  display: "block",
+                }}
+              >
                 {starsText(verdict.stars)}
               </span>
               {verdict.take.trim() && (
@@ -164,11 +181,12 @@ export const ShareCard = forwardRef<HTMLDivElement, ShareCardProps>(
                   style={{
                     fontFamily: "var(--serif)",
                     fontStyle: "italic",
-                    color: "var(--ink-soft)",
-                    marginLeft: 10,
+                    fontSize: 15.5,
+                    display: "block",
+                    marginTop: 6,
                   }}
                 >
-                  “{verdict.take.trim().slice(0, 90)}”
+                  “{verdict.take.trim().slice(0, 120)}”
                 </span>
               )}
             </div>
@@ -179,6 +197,7 @@ export const ShareCard = forwardRef<HTMLDivElement, ShareCardProps>(
         <div
           style={{
             marginTop: "auto",
+            flexShrink: 0,
             fontFamily: "var(--mono)",
             fontSize: 11,
             color: "var(--grey)",
