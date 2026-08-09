@@ -4,6 +4,7 @@
 // feature, and exports it as a crisp PNG (or native share on mobile).
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { AnimatePresence, motion } from "motion/react";
 import { toPng } from "html-to-image";
 import { fetchCoverDataUrl } from "@/lib/api";
@@ -20,6 +21,13 @@ interface ShareModalProps {
   onClose: () => void;
 }
 
+// Safari and iOS browsers (all WebKit) — Chrome's UA also says AppleWebKit,
+// so exclude the Blink family
+const IS_WEBKIT =
+  typeof navigator !== "undefined" &&
+  /AppleWebKit/i.test(navigator.userAgent) &&
+  !/Chrome|Chromium|Edg\//i.test(navigator.userAgent);
+
 export function ShareModal({ analysis, verdict, open, onClose }: ShareModalProps) {
   const cardRef = useRef<HTMLDivElement>(null);
   const [momentIdx, setMomentIdx] = useState(0);
@@ -29,24 +37,35 @@ export function ShareModal({ analysis, verdict, open, onClose }: ShareModalProps
   const [format, setFormat] = useState<"post" | "story">("post");
   const [storyLinkReady, setStoryLinkReady] = useState(false);
 
-  // inline the cover before export — see fetchCoverDataUrl for why
-  const [coverData, setCoverData] = useState<string | null>(null);
+  // inline the cover before export — see fetchCoverDataUrl for why. Keyed by
+  // cover URL so a new song can never export the previous song's art, and
+  // render() awaits the in-flight fetch so a fast download can't race it.
+  const [cover, setCover] = useState<{ for: string; data: string } | null>(null);
+  const coverFetch = useRef<{ for: string; p: Promise<void> } | null>(null);
+  function ensureCover(): Promise<void> {
+    const url = analysis.track.cover;
+    if (!url) return Promise.resolve();
+    if (coverFetch.current?.for !== url) {
+      coverFetch.current = {
+        for: url,
+        p: fetchCoverDataUrl(url).then((d) => {
+          // flushSync so the DOM holds the data URI before render() captures it
+          if (d) flushSync(() => setCover({ for: url, data: d }));
+        }),
+      };
+    }
+    return coverFetch.current.p;
+  }
   useEffect(() => {
-    if (!open || !analysis.track.cover || coverData) return;
-    let cancelled = false;
-    void fetchCoverDataUrl(analysis.track.cover).then((d) => {
-      if (!cancelled) setCoverData(d);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [open, analysis.track.cover, coverData]);
+    if (open) void ensureCover();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, analysis.track.cover]);
   const cardAnalysis = useMemo(
     () =>
-      coverData
-        ? { ...analysis, track: { ...analysis.track, cover: coverData } }
+      cover && cover.for === analysis.track.cover
+        ? { ...analysis, track: { ...analysis.track, cover: cover.data } }
         : analysis,
-    [analysis, coverData]
+    [analysis, cover]
   );
 
   const moments = analysis.explanation.moments;
@@ -65,12 +84,21 @@ export function ShareModal({ analysis, verdict, open, onClose }: ShareModalProps
   async function render(): Promise<Blob | null> {
     if (!cardRef.current) return null;
     await document.fonts.ready;
-    const dataUrl = await toPng(cardRef.current, {
+    await ensureCover();
+    const opts = {
       pixelRatio: 2,
       // NO cacheBust: it appends a query param on re-fetch, which invalidates
       // Deezer's signed cover URLs and blanks the art in the export
       backgroundColor: "#faf8f5",
-    });
+    };
+    let dataUrl = await toPng(cardRef.current, opts);
+    // WebKit rasterizes foreignObject images lazily: the first pass paints
+    // <img> as an empty box (blank album art on iPhone) even when the src is
+    // a data URI — re-render and keep the last pass. Chrome doesn't need it.
+    if (IS_WEBKIT) {
+      dataUrl = await toPng(cardRef.current, opts);
+      dataUrl = await toPng(cardRef.current, opts);
+    }
     const res = await fetch(dataUrl);
     return res.blob();
   }
